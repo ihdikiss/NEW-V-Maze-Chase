@@ -1,0 +1,5 @@
+{
+  "name": "NEW V Maze Chase",
+  "description": "An educational 2D maze chase game where players navigate a sci-fi environment to find correct answer zones while avoiding patrolling sentinels.",
+  "requestFramePermissions": []
+}
