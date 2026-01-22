@@ -25,11 +25,13 @@ export interface Question {
 }
 
 export enum GameState {
+  LANDING = 'LANDING',
   INTRO = 'INTRO',
   BRIEFING = 'BRIEFING',
   PLAYING = 'PLAYING',
   RESULT = 'RESULT',
-  GAME_OVER = 'GAME_OVER'
+  GAME_OVER = 'GAME_OVER',
+  PRO_SUCCESS = 'PRO_SUCCESS'
 }
 
 export enum CameraMode {

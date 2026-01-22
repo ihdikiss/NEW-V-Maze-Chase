@@ -33,8 +33,8 @@ const CameraIcon: React.FC = () => (
 const HUD: React.FC<HUDProps> = ({ score, lives, level, question, ammo = 0, onToggleSettings, isSettingsOpen }) => {
   return (
     <div className="w-full flex flex-col gap-4 z-20 pointer-events-none p-4 md:p-6">
-      {/* Upper Status Bar */}
-      <div className="flex justify-between items-center px-8 py-3 bg-black/60 border border-white/10 rounded-2xl backdrop-blur-md shadow-[0_0_30px_rgba(0,0,0,0.5)]">
+      {/* Upper Status Bar - Added pointer-events-auto here to enable clicking on child buttons */}
+      <div className="flex justify-between items-center px-8 py-3 bg-black/60 border border-white/10 rounded-2xl backdrop-blur-md shadow-[0_0_30px_rgba(0,0,0,0.5)] pointer-events-auto">
         
         {/* Left Section: Sector, Camera Settings, Weapon */}
         <div className="flex gap-10 items-center">
@@ -43,11 +43,11 @@ const HUD: React.FC<HUDProps> = ({ score, lives, level, question, ammo = 0, onTo
             <span className="text-white text-2xl font-black font-['Orbitron']">PROTOCOL-0{level}</span>
           </div>
 
-          {/* Moved Camera Settings here */}
+          {/* Camera Settings Button */}
           <div className="flex items-center">
             <button 
               onClick={onToggleSettings}
-              className={`pointer-events-auto p-2 rounded-xl border transition-all duration-300 flex flex-col items-center gap-0.5
+              className={`p-2 rounded-xl border transition-all duration-300 flex flex-col items-center gap-0.5
                 ${isSettingsOpen 
                   ? 'bg-blue-600 border-blue-400 text-white shadow-[0_0_15px_rgba(59,130,246,0.5)]' 
                   : 'bg-white/5 border-white/10 text-blue-400 hover:bg-white/10 hover:border-blue-500/50'}`}
@@ -66,7 +66,7 @@ const HUD: React.FC<HUDProps> = ({ score, lives, level, question, ammo = 0, onTo
           </div>
         </div>
 
-        {/* Center Section: DATA (Moved from Left) */}
+        {/* Center Section: DATA */}
         <div className="flex items-center">
           <div className="flex flex-col items-center">
             <span className="text-[10px] text-[#ffd700] font-black tracking-[0.3em] uppercase">DATA</span>
