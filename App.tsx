@@ -1,10 +1,11 @@
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import GameView from './components/GameView';
 import HUD from './components/HUD';
 import MissionBriefing from './components/MissionBriefing';
 import { GameState, CameraMode } from './types';
 import { LEVELS } from './constants';
+import { supabase } from './lib/supabase';
 
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>(GameState.LANDING);
@@ -16,9 +17,57 @@ const App: React.FC = () => {
   const [ammo, setAmmo] = useState(0);
   const [lastFeedback, setLastFeedback] = useState<{ type: 'success' | 'fail', message: string } | null>(null);
   
-  // Membership State
+  // Membership & Auth State
   const [isPremium, setIsPremium] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('signup');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  // Check for existing session on mount
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        setIsPremium(true);
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsPremium(!!session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setAuthError(null);
+
+    try {
+      if (authMode === 'signup') {
+        const { data, error } = await supabase.auth.signUp({ email, password });
+        if (error) throw error;
+        // After signup success
+        setIsPremium(true);
+        setShowAuthModal(false);
+        setGameState(GameState.PRO_SUCCESS);
+      } else {
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        // After login success
+        setIsPremium(true);
+        setShowAuthModal(false);
+        setGameState(GameState.PRO_SUCCESS);
+      }
+    } catch (err: any) {
+      setAuthError(err.message || 'Authentication error');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const startGame = () => {
     setScore(0);
@@ -30,7 +79,6 @@ const App: React.FC = () => {
   };
 
   const nextLevel = () => {
-    // Free Trial Logic: End after 5 questions (index 4)
     if (!isPremium && levelIndex === 4) {
       setGameState(GameState.RESULT);
       return;
@@ -73,18 +121,17 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="relative w-full h-screen bg-[#050510] text-white flex flex-col overflow-hidden font-sans">
+    <div className="relative w-full h-screen bg-[#050510] text-white flex flex-col overflow-hidden font-sans text-right" dir="rtl">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,#1a1a3a_0%,#050510_100%)] z-0"></div>
       
       {/* 1. LANDING PAGE */}
       {gameState === GameState.LANDING && (
         <div className="z-10 h-full w-full flex flex-col items-center justify-center animate-fade-in p-6 text-center">
-          {/* Logo Section */}
           <div className="relative mb-8 transform hover:scale-105 transition-transform duration-500">
             <div className="absolute -inset-10 bg-cyan-500/20 rounded-full blur-3xl"></div>
-            <div className="relative flex items-center gap-4">
+            <div className="relative flex items-center gap-4 flex-row-reverse">
                <span className="text-8xl md:text-[10rem] font-black font-['Orbitron'] text-transparent bg-clip-text bg-gradient-to-br from-cyan-400 via-blue-500 to-emerald-300 drop-shadow-[0_0_40px_rgba(34,211,238,0.6)] leading-none">9</span>
-               <div className="flex flex-col -ml-4 text-left">
+               <div className="flex flex-col -mr-4 text-right">
                  <h1 className="text-5xl md:text-7xl font-black text-white font-['Orbitron'] tracking-tighter uppercase">
                    RA <span className="text-emerald-400">O</span> NCHT
                  </h1>
@@ -97,7 +144,6 @@ const App: React.FC = () => {
             مرحباً بك في أول منصة تجمع بين متعة المغامرة الفضائية والتحصيل الدراسي
           </h2>
 
-          {/* Action Buttons */}
           <div className="flex flex-col md:flex-row gap-6 w-full max-w-2xl">
             <button 
               onClick={() => { setIsPremium(false); setGameState(GameState.INTRO); }}
@@ -112,7 +158,7 @@ const App: React.FC = () => {
               onClick={() => setShowAuthModal(true)}
               className="flex-1 py-5 px-8 rounded-2xl bg-gradient-to-r from-cyan-600 to-blue-700 hover:from-cyan-500 hover:to-blue-600 transition-all text-xl font-black shadow-[0_0_30px_rgba(8,145,178,0.4)] relative overflow-hidden group"
             >
-               <div className="absolute top-0 right-0 p-1">
+               <div className="absolute top-0 left-0 p-1">
                  <svg className="w-5 h-5 text-emerald-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
                </div>
                <span className="text-cyan-200 block text-xs uppercase tracking-widest mb-1">بريميوم</span>
@@ -121,34 +167,60 @@ const App: React.FC = () => {
             </button>
           </div>
 
-          {/* Fixed Orientation Guide in Corner */}
-          <div className="absolute bottom-8 right-8 flex items-center gap-3 text-cyan-400/60 animate-pulse">
-            <p className="text-[10px] font-bold uppercase tracking-tighter">Landscape recommended</p>
+          <div className="absolute bottom-8 left-8 flex items-center gap-3 text-cyan-400/60 animate-pulse">
             <svg className="w-6 h-6 animate-[rotate-phone_4s_infinite]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>
+            <p className="text-[10px] font-bold uppercase tracking-tighter">ينصح بالوضع الأفقي</p>
           </div>
 
-          {/* Auth Modal */}
+          {/* Auth Modal Integrates Supabase */}
           {showAuthModal && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-4" dir="ltr">
               <div className="bg-[#0a0a20] border border-cyan-500/30 w-full max-w-md rounded-[2.5rem] p-8 shadow-[0_0_100px_rgba(0,255,255,0.15)] relative overflow-hidden animate-fade-in">
                 <button onClick={() => setShowAuthModal(false)} className="absolute top-6 right-6 text-gray-500 hover:text-white transition-colors">
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l18 18"></path></svg>
                 </button>
                 
-                <h3 className="text-3xl font-black font-['Orbitron'] text-center mb-8 bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-500">ACCESS PORTAL</h3>
-                
-                <div className="space-y-4 mb-8">
-                  <input type="text" placeholder="Username" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:border-cyan-500 outline-none transition-all" />
-                  <input type="email" placeholder="Email Address" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:border-cyan-500 outline-none transition-all" />
-                  <input type="password" placeholder="Password" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:border-cyan-500 outline-none transition-all" />
+                <h3 className="text-3xl font-black font-['Orbitron'] text-center mb-4 bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-500 uppercase tracking-widest">
+                  {authMode === 'signup' ? 'Access Portal' : 'Login Protocol'}
+                </h3>
+
+                <div className="flex bg-white/5 rounded-xl p-1 mb-6">
+                  <button 
+                    onClick={() => setAuthMode('signup')}
+                    className={`flex-1 py-2 rounded-lg font-bold transition-all ${authMode === 'signup' ? 'bg-cyan-600 text-white' : 'text-gray-500'}`}
+                  >Register</button>
+                  <button 
+                    onClick={() => setAuthMode('login')}
+                    className={`flex-1 py-2 rounded-lg font-bold transition-all ${authMode === 'login' ? 'bg-cyan-600 text-white' : 'text-gray-500'}`}
+                  >Login</button>
                 </div>
 
-                <button 
-                  onClick={() => { setIsPremium(true); setShowAuthModal(false); setGameState(GameState.PRO_SUCCESS); }}
-                  className="w-full py-4 bg-cyan-600 hover:bg-cyan-500 rounded-xl font-black text-lg shadow-lg transition-all mb-6"
-                >
-                  SIGN IN / REGISTER
-                </button>
+                <form onSubmit={handleAuth} className="space-y-4 mb-6 text-left">
+                  <input 
+                    type="email" 
+                    placeholder="Email Address" 
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:border-cyan-500 outline-none transition-all" 
+                  />
+                  <input 
+                    type="password" 
+                    placeholder="Password" 
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:border-cyan-500 outline-none transition-all" 
+                  />
+                  {authError && <p className="text-red-500 text-xs font-bold text-center">{authError}</p>}
+                  <button 
+                    type="submit" 
+                    disabled={loading}
+                    className="w-full py-4 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 rounded-xl font-black text-lg shadow-lg transition-all"
+                  >
+                    {loading ? 'PROCESSING...' : (authMode === 'signup' ? 'CREATE ACCOUNT' : 'AUTHENTICATE')}
+                  </button>
+                </form>
 
                 <div className="text-center">
                   <p className="text-gray-500 text-sm mb-4">للاشتراك وتفعيل الحساب، راسلنا عبر الواتساب</p>
@@ -197,7 +269,7 @@ const App: React.FC = () => {
               onClick={() => setGameState(GameState.INTRO)}
               className="w-full py-5 bg-white/5 border border-white/20 hover:bg-white/10 rounded-2xl font-black text-xl uppercase tracking-widest transition-all"
             >
-              Enter Simulation
+              دخول المحاكاة
             </button>
           </div>
         </div>
@@ -207,12 +279,11 @@ const App: React.FC = () => {
       {gameState === GameState.INTRO && (
         <div className="z-10 h-full w-full flex flex-col items-center justify-start lg:justify-center animate-fade-in p-4 overflow-y-auto">
           <div className="flex flex-col items-center w-full max-w-4xl py-8">
-            {/* Logo Section */}
             <div className="relative group mb-4 flex flex-col items-center">
               <div className="absolute -inset-6 bg-gradient-to-r from-cyan-600 via-blue-500 to-emerald-400 rounded-full blur-2xl opacity-20 group-hover:opacity-40 transition duration-1000"></div>
-              <div className="relative flex items-center gap-2 md:gap-4">
+              <div className="relative flex items-center gap-2 md:gap-4 flex-row-reverse">
                  <span className="text-7xl md:text-[8rem] lg:text-[10rem] font-black font-['Orbitron'] text-transparent bg-clip-text bg-gradient-to-br from-cyan-400 via-blue-500 to-cyan-300 drop-shadow-[0_0_25px_rgba(34,211,238,0.5)] leading-none">9</span>
-                 <div className="flex flex-col -ml-1 md:-ml-2">
+                 <div className="flex flex-col -ml-1 md:-ml-2 text-right">
                    <h1 className="text-3xl md:text-5xl lg:text-7xl font-black text-white font-['Orbitron'] tracking-tighter drop-shadow-[0_0_15px_rgba(255,255,255,0.3)] uppercase">
                      RA <span className="text-emerald-400">O</span> NCHT
                    </h1>
@@ -258,7 +329,7 @@ const App: React.FC = () => {
 
       {gameState === GameState.PLAYING && (
         <div className="relative w-full h-full flex flex-col z-10">
-          <div className="absolute top-4 right-4 z-50 flex gap-3 pointer-events-auto">
+          <div className="absolute top-4 left-4 z-50 flex gap-3 pointer-events-auto">
             <button 
               onClick={() => setGameState(GameState.LANDING)}
               title="Abort Mission"
@@ -278,7 +349,6 @@ const App: React.FC = () => {
             isSettingsOpen={isSettingsOpen}
           />
 
-          {/* Camera Settings Menu - Moved to higher fixed overlay layer */}
           {isSettingsOpen && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-none">
               <div className="w-72 bg-black/95 border-2 border-blue-500/50 rounded-[2rem] backdrop-blur-2xl p-6 shadow-[0_0_60px_rgba(59,130,246,0.3)] animate-fade-in pointer-events-auto">
@@ -337,7 +407,6 @@ const App: React.FC = () => {
               {gameState === GameState.GAME_OVER ? 'SYSTEM FAILURE' : 'MISSION CLEAR'}
             </h1>
             
-            {/* Free Trial Message and Upgrade Button */}
             {!isPremium && gameState === GameState.RESULT && levelIndex === 4 && (
                <div className="mb-8 flex flex-col gap-4">
                  <div className="p-6 bg-cyan-600/20 border border-cyan-500/40 rounded-2xl animate-pulse">
@@ -345,7 +414,7 @@ const App: React.FC = () => {
                  </div>
                  
                  <button 
-                  onClick={() => { setIsPremium(true); setGameState(GameState.PRO_SUCCESS); }}
+                  onClick={() => setShowAuthModal(true)}
                   className="w-full py-5 px-8 bg-gradient-to-r from-cyan-600 to-blue-700 hover:from-cyan-500 hover:to-blue-600 rounded-2xl font-black text-2xl shadow-[0_0_30px_rgba(8,145,178,0.5)] transition-all transform hover:scale-105 active:scale-95 border border-cyan-400/30"
                  >
                    قم الآن بتجربة النسخة المدفوعة
