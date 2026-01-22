@@ -4,7 +4,7 @@ import GameView from './components/GameView';
 import HUD from './components/HUD';
 import MissionBriefing from './components/MissionBriefing';
 import { GameState, CameraMode } from './types';
-import { LEVELS } from './constants';
+import { LEVELS as HARDCODED_LEVELS, TILE_SIZE } from './constants';
 import { supabase } from './lib/supabase';
 
 const App: React.FC = () => {
@@ -17,8 +17,12 @@ const App: React.FC = () => {
   const [ammo, setAmmo] = useState(0);
   const [lastFeedback, setLastFeedback] = useState<{ type: 'success' | 'fail', message: string } | null>(null);
   
+  // Game Content State
+  const [activeLevels, setActiveLevels] = useState(HARDCODED_LEVELS);
+
   // Membership & Auth State
   const [isPremium, setIsPremium] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('signup');
   const [email, setEmail] = useState('');
@@ -26,16 +30,74 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
+  // SMART FETCH LOGIC
+  const syncCustomQuestions = async (targetEmail: string | null) => {
+    try {
+      let query = supabase.from('custom_questions').select('*');
+      
+      // Step A & B: Check for specific user questions
+      if (targetEmail) {
+        const { data: userQuestions, error: userError } = await query.eq('assigned_to_email', targetEmail);
+        if (!userError && userQuestions && userQuestions.length > 0) {
+          mapQuestionsToLevels(userQuestions);
+          return;
+        }
+      }
+
+      // Step C: Result empty? Fetch general questions (assigned_to_email is NULL)
+      const { data: generalQuestions, error: genError } = await supabase
+        .from('custom_questions')
+        .select('*')
+        .is('assigned_to_email', null);
+      
+      if (!genError && generalQuestions && generalQuestions.length > 0) {
+        mapQuestionsToLevels(generalQuestions);
+      } else {
+        // Fallback to defaults if DB is totally empty
+        setActiveLevels(HARDCODED_LEVELS);
+      }
+    } catch (err) {
+      console.error("Critical: Smart Fetch Failure", err);
+      setActiveLevels(HARDCODED_LEVELS);
+    }
+  };
+
+  const mapQuestionsToLevels = (questions: any[]) => {
+    // Map DB rows to the structure needed by GameView
+    const mapped = questions.map((q, idx) => {
+      // Use templates from HARDCODED_LEVELS to ensure maze/enemies are valid
+      const template = HARDCODED_LEVELS[idx % HARDCODED_LEVELS.length];
+      return {
+        ...template,
+        id: q.id,
+        question: q.question_text,
+        options: [
+          { text: q.option_a, isCorrect: q.correct_option === 0, pos: template.options[0].pos },
+          { text: q.option_b, isCorrect: q.correct_option === 1, pos: template.options[1].pos },
+          { text: q.option_c, isCorrect: q.correct_option === 2, pos: template.options[2].pos }
+        ]
+      };
+    });
+    setActiveLevels(mapped);
+  };
+
   // Check for existing session on mount
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         setIsPremium(true);
+        setUserEmail(session.user.email || null);
+        syncCustomQuestions(session.user.email || null);
+      } else {
+        syncCustomQuestions(null);
       }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const email = session?.user?.email || null;
       setIsPremium(!!session);
+      setUserEmail(email);
+      syncCustomQuestions(email);
     });
 
     return () => subscription.unsubscribe();
@@ -50,14 +112,12 @@ const App: React.FC = () => {
       if (authMode === 'signup') {
         const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
-        // After signup success
         setIsPremium(true);
         setShowAuthModal(false);
         setGameState(GameState.PRO_SUCCESS);
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        // After login success
         setIsPremium(true);
         setShowAuthModal(false);
         setGameState(GameState.PRO_SUCCESS);
@@ -84,7 +144,7 @@ const App: React.FC = () => {
       return;
     }
 
-    if (levelIndex < LEVELS.length - 1) {
+    if (levelIndex < activeLevels.length - 1) {
       setLevelIndex(l => l + 1);
       setGameState(GameState.BRIEFING);
     } else {
@@ -99,7 +159,7 @@ const App: React.FC = () => {
       setLastFeedback(null);
       nextLevel();
     }, 2500);
-  }, [levelIndex, isPremium]);
+  }, [levelIndex, isPremium, activeLevels]);
 
   const handleIncorrect = useCallback(() => {
     setLastFeedback({ type: 'fail', message: 'WARNING: WRONG SECTOR' });
@@ -322,7 +382,7 @@ const App: React.FC = () => {
       {gameState === GameState.BRIEFING && (
         <MissionBriefing 
           level={levelIndex + 1} 
-          question={LEVELS[levelIndex].question} 
+          question={activeLevels[levelIndex].question} 
           onEngage={engageMission} 
         />
       )}
@@ -343,7 +403,7 @@ const App: React.FC = () => {
             score={score} 
             lives={lives} 
             level={levelIndex + 1} 
-            question={LEVELS[levelIndex].question} 
+            question={activeLevels[levelIndex].question} 
             ammo={ammo}
             onToggleSettings={() => setIsSettingsOpen(!isSettingsOpen)}
             isSettingsOpen={isSettingsOpen}
@@ -381,7 +441,7 @@ const App: React.FC = () => {
 
           <div className="flex-1 w-full relative">
             <GameView 
-              levelData={LEVELS[levelIndex]} 
+              levelData={activeLevels[levelIndex]} 
               onCorrect={handleCorrect}
               onIncorrect={handleIncorrect}
               onEnemyHit={handleEnemyCollision}
@@ -404,44 +464,27 @@ const App: React.FC = () => {
         <div className="z-20 h-full w-full flex flex-col items-center justify-center animate-scale-up bg-black/90 backdrop-blur-xl">
           <div className="p-8 md:p-16 border-4 border-white/5 rounded-[3rem] md:rounded-[4rem] bg-[#08081a] shadow-2xl text-center relative max-w-2xl w-full mx-4">
             <h1 className={`text-4xl md:text-7xl font-black mb-10 font-['Orbitron'] tracking-tighter ${gameState === GameState.GAME_OVER ? 'text-red-500' : 'text-green-500'}`}>
-              {gameState === GameState.GAME_OVER ? 'SYSTEM FAILURE' : 'MISSION CLEAR'}
+              {gameState === GameState.GAME_OVER ? 'SYSTEM FAILURE' : 'MISSION COMPLETE'}
             </h1>
             
-            {!isPremium && gameState === GameState.RESULT && levelIndex === 4 && (
-               <div className="mb-8 flex flex-col gap-4">
-                 <div className="p-6 bg-cyan-600/20 border border-cyan-500/40 rounded-2xl animate-pulse">
-                    <p className="text-xl font-bold text-cyan-300">أحسنت! لتجربة اللعبة كاملة بجميع دروسك، اشترك الآن</p>
-                 </div>
-                 
-                 <button 
-                  onClick={() => setShowAuthModal(true)}
-                  className="w-full py-5 px-8 bg-gradient-to-r from-cyan-600 to-blue-700 hover:from-cyan-500 hover:to-blue-600 rounded-2xl font-black text-2xl shadow-[0_0_30px_rgba(8,145,178,0.5)] transition-all transform hover:scale-105 active:scale-95 border border-cyan-400/30"
-                 >
-                   قم الآن بتجربة النسخة المدفوعة
-                 </button>
-               </div>
-            )}
-
-            <div className="flex flex-col items-center gap-2 mb-12">
-              <span className="text-gray-500 text-[10px] md:text-xs font-black tracking-[0.5em] uppercase">
-                {gameState === GameState.GAME_OVER ? 'ATTEMPTS EXHAUSTED' : 'Final Efficiency Rating'}
-              </span>
-              <span className="text-5xl md:text-6xl font-black text-white font-['Orbitron']">{score}</span>
+            <div className="mb-12">
+              <p className="text-gray-400 text-sm uppercase tracking-[0.4em] mb-2">Final Data Score</p>
+              <p className="text-6xl md:text-8xl font-black text-white font-['Orbitron']">{score.toString().padStart(6, '0')}</p>
             </div>
-            
-            <div className="flex flex-col gap-4">
-               <button 
-                 onClick={startGame}
-                 className="bg-white text-black px-12 md:px-16 py-4 md:py-6 font-black text-xl md:text-2xl rounded-2xl hover:bg-cyan-400 hover:text-white transition-all font-['Orbitron'] tracking-widest shadow-xl"
-               >
-                 {gameState === GameState.GAME_OVER ? 'RETRY MISSION' : 'RE-INITIALIZE'}
-               </button>
-               <button 
-                 onClick={() => setGameState(GameState.LANDING)}
-                 className="text-gray-400 hover:text-white transition-colors uppercase tracking-widest text-xs font-black"
-               >
-                 Return to Home Port
-               </button>
+
+            <div className="flex flex-col md:flex-row gap-6 justify-center">
+              <button 
+                onClick={startGame}
+                className="px-12 py-4 bg-cyan-600 hover:bg-cyan-500 rounded-2xl font-black text-xl transition-all shadow-[0_0_30px_rgba(0,210,255,0.3)]"
+              >
+                REINITIALIZE
+              </button>
+              <button 
+                onClick={() => setGameState(GameState.LANDING)}
+                className="px-12 py-4 bg-white/5 border border-white/10 hover:bg-white/20 rounded-2xl font-black text-xl transition-all"
+              >
+                EXIT TO BASE
+              </button>
             </div>
           </div>
         </div>
@@ -450,4 +493,5 @@ const App: React.FC = () => {
   );
 };
 
+// Added missing default export to fix "Module has no default export" error in index.tsx
 export default App;
