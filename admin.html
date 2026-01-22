@@ -1,287 +1,56 @@
-
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>9RA O NCHT - Control Panel</title>
-    
-    <!-- Scripts in Head as requested -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <title>404 - Sector Decommissioned</title>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
-    
     <style>
         body { 
             background-color: #050510; 
+            color: #4a90e2; 
             font-family: 'Orbitron', sans-serif; 
-            color: white;
-            margin: 0;
-            min-height: 100vh;
+            display: flex; 
+            flex-direction: column;
+            align-items: center; 
+            justify-content: center; 
+            height: 100vh; 
+            margin: 0; 
+            text-align: center; 
+            overflow: hidden;
         }
-        /* Custom Neon Styles */
-        .neon-border { border: 1px solid rgba(0, 255, 255, 0.5); box-shadow: 0 0 20px rgba(0, 255, 255, 0.2); }
-        .neon-text-cyan { color: #00f2ff; text-shadow: 0 0 10px rgba(0, 242, 255, 0.6); }
-        .neon-bg-cyan { background-color: #00f2ff; box-shadow: 0 0 25px rgba(0, 242, 255, 0.5); }
-        
-        input, select, textarea { 
-            background: rgba(255,255,255,0.05) !important; 
-            border: 1px solid rgba(255,255,255,0.2) !important; 
-            color: white !important;
-            padding: 0.75rem 1rem !important;
+        .container {
+            border: 2px solid rgba(0, 242, 255, 0.2);
+            padding: 3rem;
+            border-radius: 2rem;
+            background: rgba(10, 10, 32, 0.8);
+            box-shadow: 0 0 50px rgba(0, 242, 255, 0.1);
         }
-        input:focus { border-color: #00f2ff !important; outline: none; }
-        
-        /* High Z-Index for Password Portal */
-        #passwordOverlay {
-            position: fixed;
-            inset: 0;
-            z-index: 9999;
-            background-color: #050510;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+        h1 { font-size: 5rem; margin: 0; color: #ff4d4d; text-shadow: 0 0 20px rgba(255, 77, 77, 0.5); }
+        p { font-size: 1.2rem; margin-bottom: 2rem; color: #888; }
+        a { 
+            color: #00f2ff; 
+            text-decoration: none; 
+            border: 1px solid #00f2ff; 
+            padding: 1rem 2rem; 
+            border-radius: 1rem; 
+            font-weight: bold;
+            transition: 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 2px;
         }
-        
-        .animate-fade { animation: fadeIn 0.6s ease-out forwards; }
-        @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+        a:hover { 
+            background: #00f2ff; 
+            color: #050510; 
+            box-shadow: 0 0 30px #00f2ff;
+        }
     </style>
 </head>
-<body class="p-4 md:p-8">
-
-    <!-- Password Overlay (High Z-Index) -->
-    <div id="passwordOverlay">
-        <div class="max-w-md w-full p-10 rounded-[2.5rem] border-2 border-cyan-500/50 bg-[#0a0a20] text-center shadow-[0_0_80px_rgba(0,242,255,0.15)] animate-fade">
-            <div class="mb-6 inline-block p-4 rounded-full bg-cyan-500/10">
-                <svg class="w-12 h-12 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
-            </div>
-            <h1 class="text-3xl font-black mb-8 neon-text-cyan tracking-widest">ADMIN PORTAL</h1>
-            <div class="space-y-4">
-                <input type="password" id="adminPass" placeholder="Enter Access Code" class="w-full rounded-xl text-center text-xl font-bold">
-                <button onclick="checkPassword()" class="w-full py-4 neon-bg-cyan text-black font-black rounded-xl hover:brightness-110 active:scale-95 transition-all">UNSEAL PORTAL</button>
-            </div>
-            <p id="passError" class="text-red-500 mt-6 hidden font-bold animate-pulse">ERROR: ACCESS DENIED</p>
-        </div>
+<body>
+    <div class="container">
+        <h1>404</h1>
+        <p>ACCESS DENIED: THIS SECTOR HAS BEEN PURGED</p>
+        <a href="/">Back to Mission Control</a>
     </div>
-
-    <!-- Main Admin Dashboard (Hidden by default) -->
-    <div id="mainContent" class="hidden opacity-0 transition-opacity duration-700">
-        <div class="max-w-6xl mx-auto">
-            <header class="flex justify-between items-center mb-12 border-b border-white/10 pb-8">
-                <div>
-                    <h1 class="text-4xl font-black neon-text-cyan leading-tight">QUESTION CONTROL</h1>
-                    <p class="text-gray-400 font-bold uppercase tracking-widest text-xs mt-1">Sector Data & Deployment System</p>
-                </div>
-                <button onclick="logout()" class="px-8 py-3 border-2 border-red-500/40 text-red-400 rounded-full font-black hover:bg-red-500 hover:text-white transition-all text-sm uppercase tracking-widest">Close Portal</button>
-            </header>
-
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-10">
-                <!-- Form Section -->
-                <div class="lg:col-span-1 space-y-8">
-                    <div class="p-8 rounded-[2.5rem] bg-white/5 border border-white/10 shadow-2xl relative overflow-hidden group">
-                        <div class="absolute top-0 left-0 w-1 h-full bg-cyan-500"></div>
-                        <h2 class="text-xl font-black mb-8 flex items-center gap-3">
-                            ADD NEW SECTOR DATA
-                        </h2>
-                        <form id="questionForm" class="space-y-5">
-                            <div>
-                                <label class="block text-[10px] font-black text-gray-500 mb-2 tracking-[0.2em]">QUESTION CONTENT</label>
-                                <textarea id="qText" required rows="3" class="w-full rounded-xl"></textarea>
-                            </div>
-                            <div class="space-y-3">
-                                <input type="text" id="optA" placeholder="Option A" required class="w-full rounded-xl">
-                                <input type="text" id="optB" placeholder="Option B" required class="w-full rounded-xl">
-                                <input type="text" id="optC" placeholder="Option C" required class="w-full rounded-xl">
-                            </div>
-                            <div>
-                                <label class="block text-[10px] font-black text-gray-500 mb-2 tracking-[0.2em]">CORRECT INDEX</label>
-                                <select id="correctIdx" class="w-full rounded-xl">
-                                    <option value="0">Index 0 (Option A)</option>
-                                    <option value="1">Index 1 (Option B)</option>
-                                    <option value="2">Index 2 (Option C)</option>
-                                </select>
-                            </div>
-                            <div class="pt-6 border-t border-white/10">
-                                <label class="block text-[10px] font-black text-emerald-400 mb-2 tracking-[0.2em]">USER ASSIGNMENT (OPTIONAL)</label>
-                                <input type="email" id="targetEmail" placeholder="user@example.com" class="w-full rounded-xl">
-                            </div>
-                            <button type="submit" class="w-full py-5 neon-bg-cyan text-black font-black rounded-xl hover:scale-[1.02] transition-all mt-4 uppercase">Inject into DB</button>
-                        </form>
-                    </div>
-
-                    <div class="p-8 rounded-[2.5rem] bg-emerald-500/5 border border-emerald-500/20 shadow-xl">
-                        <h3 class="font-black text-emerald-400 mb-4 tracking-wider">RESET PROTOCOL</h3>
-                        <p class="text-xs text-gray-400 mb-6 leading-relaxed">Remove all user-specific overrides to restore general mission data.</p>
-                        <input type="email" id="resetEmail" placeholder="Target User Email" class="w-full rounded-xl mb-4">
-                        <button onclick="resetUser()" class="w-full py-3 bg-emerald-600/20 border border-emerald-500/40 text-emerald-400 font-bold rounded-xl hover:bg-emerald-600 hover:text-white transition-all uppercase text-xs tracking-widest">Purge Overrides</button>
-                    </div>
-                </div>
-
-                <!-- List Section -->
-                <div class="lg:col-span-2">
-                    <div class="p-8 rounded-[2.5rem] bg-white/5 border border-white/10 min-h-[600px] shadow-2xl">
-                        <div class="flex justify-between items-center mb-8">
-                            <h2 class="text-xl font-black flex items-center gap-3 uppercase tracking-tighter">
-                                <span class="w-3 h-3 bg-emerald-500 rounded-full animate-ping"></span>
-                                Live Mission Feed
-                            </h2>
-                            <button onclick="fetchQuestions()" class="text-cyan-400 text-xs font-black hover:underline uppercase tracking-widest">Refresh Sync</button>
-                        </div>
-                        <div id="questionsList" class="space-y-6 max-h-[800px] overflow-y-auto pr-4">
-                            <!-- Questions will load here -->
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        // Supabase Config
-        const SB_URL = 'https://sogywxbavcwtbtcirvsw.supabase.co';
-        const SB_KEY = 'sb_publishable_svYdUF0MDpCbpjZ2jyAPww_1UlwAtAV';
-        let supabaseClient = null;
-
-        // Ensure initialization after DOM and Supabase library are ready
-        document.addEventListener('DOMContentLoaded', () => {
-            if (window.supabase) {
-                supabaseClient = window.supabase.createClient(SB_URL, SB_KEY);
-                console.log("Supabase initialized successfully.");
-            } else {
-                console.error("Supabase CDN failed to load.");
-                alert("Critical System Error: Database connection failed. Please check your internet.");
-            }
-
-            // Check if already authenticated
-            if (localStorage.getItem('ra_admin_auth') === 'true') {
-                showDashboard();
-            }
-        });
-
-        function showDashboard() {
-            document.getElementById('passwordOverlay').style.display = 'none';
-            const main = document.getElementById('mainContent');
-            main.classList.remove('hidden');
-            setTimeout(() => main.classList.add('opacity-100'), 50);
-            fetchQuestions();
-        }
-
-        function checkPassword() {
-            const passInput = document.getElementById('adminPass');
-            const errorMsg = document.getElementById('passError');
-            
-            if (passInput.value === '9RA-ADMIN-2024') {
-                localStorage.setItem('ra_admin_auth', 'true');
-                showDashboard();
-            } else {
-                errorMsg.classList.remove('hidden');
-                passInput.value = '';
-                setTimeout(() => errorMsg.classList.add('hidden'), 3000);
-            }
-        }
-
-        function logout() {
-            localStorage.removeItem('ra_admin_auth');
-            location.reload();
-        }
-
-        async function fetchQuestions() {
-            if (!supabaseClient) return;
-
-            const list = document.getElementById('questionsList');
-            list.innerHTML = '<div class="text-center py-20 text-cyan-500/50 font-black animate-pulse uppercase tracking-[0.3em]">Syncing Neural Feed...</div>';
-
-            const { data, error } = await supabaseClient
-                .from('custom_questions')
-                .select('*')
-                .order('created_at', { ascending: false });
-
-            if (error) {
-                list.innerHTML = `<div class="p-6 bg-red-500/10 border border-red-500/30 text-red-500 rounded-2xl">DATABASE SYNC ERROR: ${error.message}</div>`;
-                return;
-            }
-
-            if (!data || data.length === 0) {
-                list.innerHTML = '<div class="text-center py-20 text-gray-600 font-bold uppercase italic">No Sector Data Found. Database is empty.</div>';
-                return;
-            }
-
-            list.innerHTML = data.map(q => `
-                <div class="p-6 rounded-2xl bg-black/40 border border-white/5 hover:border-cyan-500/40 transition-all group relative overflow-hidden">
-                    <div class="flex justify-between items-start">
-                        <div class="flex-1">
-                            <div class="flex items-center gap-3 mb-3">
-                                ${q.assigned_to_email 
-                                    ? `<span class="px-3 py-1 rounded-full bg-blue-600/20 text-blue-400 text-[9px] font-black uppercase border border-blue-500/30">Target: ${q.assigned_to_email}</span>`
-                                    : `<span class="px-3 py-1 rounded-full bg-emerald-600/20 text-emerald-400 text-[9px] font-black uppercase border border-emerald-500/30">Global Sector</span>`
-                                }
-                            </div>
-                            <h3 class="text-lg font-bold text-white mb-4 leading-relaxed">${q.question_text}</h3>
-                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                <div class="px-4 py-2 rounded-lg bg-white/5 text-[11px] font-bold ${q.correct_option === 0 ? 'text-emerald-400 border border-emerald-500/30' : 'text-gray-500'}">A: ${q.option_a}</div>
-                                <div class="px-4 py-2 rounded-lg bg-white/5 text-[11px] font-bold ${q.correct_option === 1 ? 'text-emerald-400 border border-emerald-500/30' : 'text-gray-500'}">B: ${q.option_b}</div>
-                                <div class="px-4 py-2 rounded-lg bg-white/5 text-[11px] font-bold ${q.correct_option === 2 ? 'text-emerald-400 border border-emerald-500/30' : 'text-gray-500'}">C: ${q.option_c}</div>
-                            </div>
-                        </div>
-                        <button onclick="deleteQuestion(${q.id})" class="text-red-500/50 hover:text-red-500 p-2 transition-colors">
-                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                        </button>
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        document.getElementById('questionForm').onsubmit = async (e) => {
-            e.preventDefault();
-            if (!supabaseClient) return;
-
-            const btn = e.target.querySelector('button');
-            const originalText = btn.innerText;
-            btn.disabled = true;
-            btn.innerText = 'INITIALIZING UPLOAD...';
-
-            const payload = {
-                question_text: document.getElementById('qText').value,
-                option_a: document.getElementById('optA').value,
-                option_b: document.getElementById('optB').value,
-                option_c: document.getElementById('optC').value,
-                correct_option: parseInt(document.getElementById('correctIdx').value),
-                assigned_to_email: document.getElementById('targetEmail').value || null,
-                is_private: !!document.getElementById('targetEmail').value
-            };
-
-            const { error } = await supabaseClient.from('custom_questions').insert([payload]);
-
-            if (error) {
-                alert('CRITICAL ERROR: ' + error.message);
-            } else {
-                e.target.reset();
-                fetchQuestions();
-            }
-            btn.disabled = false;
-            btn.innerText = originalText;
-        };
-
-        async function deleteQuestion(id) {
-            if (!confirm('CAUTION: Deleting this sector data is permanent. Proceed?')) return;
-            const { error } = await supabaseClient.from('custom_questions').delete().eq('id', id);
-            if (error) alert(error.message);
-            else fetchQuestions();
-        }
-
-        async function resetUser() {
-            const email = document.getElementById('resetEmail').value;
-            if (!email) return alert('Input target email required.');
-            if (!confirm(`Purge all custom data for ${email}?`)) return;
-
-            const { error } = await supabaseClient.from('custom_questions').delete().eq('assigned_to_email', email);
-            if (error) alert(error.message);
-            else {
-                alert('User cache purged. Access reverted to Global Sectors.');
-                document.getElementById('resetEmail').value = '';
-                fetchQuestions();
-            }
-        }
-    </script>
 </body>
 </html>
