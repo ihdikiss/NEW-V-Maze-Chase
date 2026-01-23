@@ -31,7 +31,8 @@ export enum GameState {
   PLAYING = 'PLAYING',
   RESULT = 'RESULT',
   GAME_OVER = 'GAME_OVER',
-  PRO_SUCCESS = 'PRO_SUCCESS'
+  PRO_SUCCESS = 'PRO_SUCCESS',
+  ADMIN = 'ADMIN'
 }
 
 export enum CameraMode {
