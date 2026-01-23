@@ -30,30 +30,40 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
-  // SMART FETCH LOGIC
+  /**
+   * SMART FETCH LOGIC
+   * 1. Try specific user questions via 'assigned_to_ema'
+   * 2. If empty, try general questions (assigned_to_ema IS NULL)
+   * 3. If still empty, use hardcoded defaults
+   */
   const syncCustomQuestions = async (targetEmail: string | null) => {
     try {
-      let query = supabase.from('custom_questions').select('*');
-      
-      // Step A & B: Check for specific user questions
+      // Step 1: Check for specific user questions
       if (targetEmail) {
-        const { data: userQuestions, error: userError } = await query.eq('assigned_to_email', targetEmail);
+        const { data: userQuestions, error: userError } = await supabase
+          .from('custom_questions')
+          .select('*')
+          .eq('assigned_to_ema', targetEmail);
+        
         if (!userError && userQuestions && userQuestions.length > 0) {
+          console.log(`Mission Control: Loading ${userQuestions.length} specific sectors for ${targetEmail}`);
           mapQuestionsToLevels(userQuestions);
           return;
         }
       }
 
-      // Step C: Result empty? Fetch general questions (assigned_to_email is NULL)
+      // Step 2: Fetch general questions for guests or users without specific assignments
       const { data: generalQuestions, error: genError } = await supabase
         .from('custom_questions')
         .select('*')
-        .is('assigned_to_email', null);
+        .is('assigned_to_ema', null);
       
       if (!genError && generalQuestions && generalQuestions.length > 0) {
+        console.log(`Mission Control: Loading ${generalQuestions.length} global sectors`);
         mapQuestionsToLevels(generalQuestions);
       } else {
-        // Fallback to defaults if DB is totally empty
+        // Fallback to defaults
+        console.log("Mission Control: Reverting to hardcoded local sectors");
         setActiveLevels(HARDCODED_LEVELS);
       }
     } catch (err) {
@@ -110,13 +120,13 @@ const App: React.FC = () => {
 
     try {
       if (authMode === 'signup') {
-        const { data, error } = await supabase.auth.signUp({ email, password });
+        const { error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
         setIsPremium(true);
         setShowAuthModal(false);
         setGameState(GameState.PRO_SUCCESS);
       } else {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         setIsPremium(true);
         setShowAuthModal(false);
@@ -493,5 +503,4 @@ const App: React.FC = () => {
   );
 };
 
-// Added missing default export to fix "Module has no default export" error in index.tsx
 export default App;
