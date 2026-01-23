@@ -30,10 +30,11 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
-  // Admin State
+  // Admin Panel States
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [adminPassInput, setAdminPassInput] = useState('');
   const [allQuestions, setAllQuestions] = useState<any[]>([]);
+  const [registeredUsers, setRegisteredUsers] = useState<string[]>([]);
   const [activeAdminEmail, setActiveAdminEmail] = useState<string | null>(null);
   const [newAdminEmailInput, setNewAdminEmailInput] = useState('');
   const [isAdminAddingEmail, setIsAdminAddingEmail] = useState(false);
@@ -46,25 +47,76 @@ const App: React.FC = () => {
     correct_option: 0
   });
 
-  // Check for #admin hash
+  // 1. Logic to handle Admin Route via URL Hash (#admin)
   useEffect(() => {
-    const handleHash = () => {
+    const handleHashChange = () => {
       if (window.location.hash === '#admin') {
         setGameState(GameState.ADMIN);
+      } else if (gameState === GameState.ADMIN) {
+        setGameState(GameState.LANDING);
       }
     };
-    handleHash();
-    window.addEventListener('hashchange', handleHash);
-    return () => window.removeEventListener('hashchange', handleHash);
-  }, []);
+    handleHashChange();
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [gameState]);
 
+  // 2. Fetch Data for Admin Panel
+  const fetchAdminData = async () => {
+    setLoading(true);
+    try {
+      // Fetch all questions
+      const { data: qData } = await supabase
+        .from('custom_questions')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (qData) setAllQuestions(qData);
+
+      // Fetch all registered users from profiles table specifically
+      const { data: pData, error: pError } = await supabase
+        .from('profiles')
+        .select('email');
+      
+      if (pError) {
+        console.error("Profiles Fetch Error:", pError);
+      }
+
+      if (pData) {
+        setRegisteredUsers(pData.map(p => p.email).filter(e => e));
+      }
+    } catch (err) {
+      console.error("Admin Fetch Error:", err);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    if (gameState === GameState.ADMIN && isAdminLoggedIn) {
+      fetchAdminData();
+    }
+  }, [gameState, isAdminLoggedIn]);
+
+  // 3. Extract Unique Emails for Admin Sidebar (Prioritizing 'profiles' table)
+  const adminUserList = useMemo(() => {
+    // Collect emails from questions as fallback/additional
+    const fromQuestions = allQuestions
+      .map(q => q.assigned_to_email)
+      .filter((ema): ema is string => !!ema && ema.trim() !== '');
+    
+    // Combine both lists (Profiles + Questions) and remove duplicates
+    const combined = Array.from(new Set([...registeredUsers, ...fromQuestions]));
+    return combined.sort();
+  }, [allQuestions, registeredUsers]);
+
+  // 4. Sync Content for Players
   const syncCustomQuestions = async (targetEmail: string | null) => {
     try {
       if (targetEmail) {
+        // Use 'assigned_to_email' correctly
         const { data: userQuestions, error: userError } = await supabase
           .from('custom_questions')
           .select('*')
-          .eq('assigned_to_ema', targetEmail);
+          .eq('assigned_to_email', targetEmail);
         
         if (!userError && userQuestions && userQuestions.length > 0) {
           mapQuestionsToLevels(userQuestions);
@@ -75,7 +127,7 @@ const App: React.FC = () => {
       const { data: generalQuestions, error: genError } = await supabase
         .from('custom_questions')
         .select('*')
-        .is('assigned_to_ema', null);
+        .is('assigned_to_email', null);
       
       if (!genError && generalQuestions && generalQuestions.length > 0) {
         mapQuestionsToLevels(generalQuestions);
@@ -86,22 +138,6 @@ const App: React.FC = () => {
       setActiveLevels(HARDCODED_LEVELS);
     }
   };
-
-  const fetchAdminData = async () => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from('custom_questions')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (data) setAllQuestions(data);
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    if (gameState === GameState.ADMIN && isAdminLoggedIn) {
-      fetchAdminData();
-    }
-  }, [gameState, isAdminLoggedIn]);
 
   const mapQuestionsToLevels = (questions: any[]) => {
     const mapped = questions.map((q, idx) => {
@@ -141,40 +177,17 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, []);
 
-  const handleAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setAuthError(null);
-    try {
-      if (authMode === 'signup') {
-        const { error } = await supabase.auth.signUp({ email, password });
-        if (error) throw error;
-        setIsPremium(true);
-        setShowAuthModal(false);
-        setGameState(GameState.PRO_SUCCESS);
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-        setIsPremium(true);
-        setShowAuthModal(false);
-        setGameState(GameState.PRO_SUCCESS);
-      }
-    } catch (err: any) {
-      setAuthError(err.message || 'Authentication error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Admin Actions
   const handleAdminAddQuestion = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const payload = { ...adminFormData, assigned_to_ema: activeAdminEmail };
+    // Use 'assigned_to_email' as per previous correction
+    const payload = { ...adminFormData, assigned_to_email: activeAdminEmail };
     const { error } = await supabase.from('custom_questions').insert([payload]);
     if (error) {
       setAdminStatus({ type: 'error', msg: 'خطأ: ' + error.message });
     } else {
-      setAdminStatus({ type: 'success', msg: 'تم بنجاح!' });
+      setAdminStatus({ type: 'success', msg: 'تم إرسال السؤال بنجاح!' });
       setAdminFormData({ question_text: '', option_a: '', option_b: '', option_c: '', correct_option: 0 });
       fetchAdminData();
     }
@@ -183,16 +196,12 @@ const App: React.FC = () => {
   };
 
   const deleteAdminQuestion = async (id: number) => {
-    if (!confirm('حذف نهائي؟')) return;
+    if (!confirm('هل تريد حذف هذا السجل نهائياً؟')) return;
     const { error } = await supabase.from('custom_questions').delete().eq('id', id);
     if (!error) fetchAdminData();
   };
 
-  const adminUniqueEmails = useMemo(() => {
-    const emails = allQuestions.map(q => q.assigned_to_ema).filter(e => e);
-    return [...new Set(emails)];
-  }, [allQuestions]);
-
+  // Standard Game Logic
   const startGame = () => {
     setScore(0);
     setLives(3);
@@ -238,6 +247,35 @@ const App: React.FC = () => {
     setLastFeedback({ type: 'fail', message: 'DETECTION ERROR' });
     setTimeout(() => setLastFeedback(null), 2000);
   }, []);
+
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setAuthError(null);
+    try {
+      if (authMode === 'signup') {
+        const { error, data } = await supabase.auth.signUp({ email, password });
+        if (error) throw error;
+        // Manual profile insertion if your DB doesn't have a trigger
+        if (data.user) {
+          await supabase.from('profiles').insert([{ id: data.user.id, email: data.user.email }]);
+        }
+        setIsPremium(true);
+        setShowAuthModal(false);
+        setGameState(GameState.PRO_SUCCESS);
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        setIsPremium(true);
+        setShowAuthModal(false);
+        setGameState(GameState.PRO_SUCCESS);
+      }
+    } catch (err: any) {
+      setAuthError(err.message || 'Authentication error');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const engageMission = () => {
     setGameState(GameState.PLAYING);
@@ -297,84 +335,192 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* 8. ADMIN PANEL (دمج مباشر) */}
+      {/* ADMIN PANEL INTEGRATION */}
       {gameState === GameState.ADMIN && (
         <div className="z-50 h-full w-full flex flex-col animate-fade-in p-4 md:p-10 overflow-y-auto bg-[#050510]" dir="rtl">
           {!isAdminLoggedIn ? (
             <div className="flex-1 flex items-center justify-center">
-              <div className="bg-[#0a0a20] border border-cyan-500/30 p-12 rounded-[3rem] text-center w-full max-w-md shadow-2xl">
-                <h2 className="orbitron text-3xl font-black text-cyan-400 mb-8">ADMIN LOGIN</h2>
-                <form onSubmit={e => { e.preventDefault(); if(adminPassInput === 'ADMIN_9RA_2025') setIsAdminLoggedIn(true); else alert('Wrong Key'); }} className="space-y-6">
-                  <input type="password" placeholder="ENTER ACCESS KEY" value={adminPassInput} onChange={e => setAdminPassInput(e.target.value)} className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl text-center text-xl orbitron outline-none focus:border-cyan-500" />
-                  <button className="w-full py-4 bg-cyan-600 rounded-2xl font-black orbitron">ENTER SECTOR</button>
+              <div className="bg-[#0a0a20] border border-cyan-500/30 p-12 rounded-[3rem] text-center w-full max-w-md shadow-2xl relative">
+                <div className="absolute -inset-4 bg-cyan-500/5 blur-xl rounded-full"></div>
+                <h2 className="orbitron text-3xl font-black text-white mb-8 relative">SECURE ACCESS</h2>
+                <form onSubmit={e => { e.preventDefault(); if(adminPassInput === 'ADMIN_9RA_2025') setIsAdminLoggedIn(true); else alert('Wrong Key'); }} className="space-y-6 relative">
+                  <input 
+                    type="password" 
+                    placeholder="ENTER ACCESS KEY" 
+                    value={adminPassInput} 
+                    onChange={e => setAdminPassInput(e.target.value)} 
+                    className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl text-center text-xl orbitron outline-none focus:border-cyan-500 transition-all" 
+                  />
+                  <button className="w-full py-5 bg-cyan-600 hover:bg-cyan-500 rounded-2xl font-black orbitron shadow-[0_0_20px_rgba(8,145,178,0.3)]">INITIATE LINK</button>
                 </form>
               </div>
             </div>
           ) : (
             <div className="w-full max-w-7xl mx-auto flex flex-col gap-8">
-              <header className="flex justify-between items-center bg-white/5 p-6 rounded-3xl border border-white/10">
-                <div>
-                  <h1 className="orbitron text-3xl font-black">MISSION CONTROL</h1>
-                  <p className="text-cyan-400 text-xs font-bold uppercase tracking-widest">Admin Dashboard</p>
+              <header className="flex flex-col md:flex-row justify-between items-center bg-white/5 p-8 rounded-[2.5rem] border border-white/10 backdrop-blur-md">
+                <div className="text-center md:text-right mb-4 md:mb-0">
+                  <h1 className="orbitron text-3xl font-black text-white">MISSION CONTROL</h1>
+                  <p className="text-cyan-400 text-xs font-bold uppercase tracking-[0.3em]">Sector Administrator Interface</p>
                 </div>
-                <button onClick={() => { window.location.hash = ''; setGameState(GameState.LANDING); }} className="px-6 py-2 border border-red-500/50 text-red-500 rounded-full hover:bg-red-500 hover:text-white transition-all">خروج</button>
+                <div className="flex gap-4">
+                  <button onClick={fetchAdminData} className="px-6 py-2 bg-white/5 border border-white/10 rounded-full text-xs font-black orbitron hover:bg-white/10">SYNC DATA</button>
+                  <button 
+                    onClick={() => { window.location.hash = ''; setGameState(GameState.LANDING); setIsAdminLoggedIn(false); }} 
+                    className="px-8 py-3 bg-red-500/10 border border-red-500/30 text-red-500 rounded-full hover:bg-red-500 hover:text-white transition-all orbitron text-xs font-black"
+                  >
+                    DISCONNECT
+                  </button>
+                </div>
               </header>
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                <div className="lg:col-span-3 bg-white/5 p-6 rounded-3xl border border-white/10">
-                  <h3 className="orbitron text-xs text-cyan-400 mb-4 tracking-widest">TARGET SELECT</h3>
-                  <div className="space-y-2 max-h-[50vh] overflow-y-auto">
-                    <button onClick={() => setActiveAdminEmail(null)} className={`w-full text-right p-3 rounded-xl transition-all ${activeAdminEmail === null ? 'bg-cyan-600 text-white' : 'hover:bg-white/5 text-gray-500'}`}>الأسئلة العامة</button>
-                    <div className="h-px bg-white/10 my-4"></div>
-                    {adminUniqueEmails.map(ema => (
-                      <button key={ema} onClick={() => setActiveAdminEmail(ema)} className={`w-full text-right p-3 rounded-xl transition-all truncate text-sm ${activeAdminEmail === ema ? 'bg-purple-600 text-white' : 'hover:bg-white/5 text-gray-500'}`}>{ema}</button>
-                    ))}
+                {/* Emails Sidebar - Shows Registered Users from profiles */}
+                <div className="lg:col-span-3 bg-white/5 p-6 rounded-[2rem] border border-white/10 backdrop-blur-md">
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="orbitron text-[10px] text-cyan-400 tracking-[0.4em] uppercase font-black">Registered Users</h3>
+                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
                   </div>
-                  <div className="mt-6 pt-6 border-t border-white/10">
+                  
+                  <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
+                    <button 
+                      onClick={() => setActiveAdminEmail(null)} 
+                      className={`w-full text-right p-4 rounded-2xl transition-all font-bold flex items-center justify-between ${activeAdminEmail === null ? 'bg-cyan-600 text-white shadow-lg' : 'hover:bg-white/5 text-gray-500 border border-transparent'}`}
+                    >
+                      <span>الأسئلة العامة</span>
+                      <div className={`w-2 h-2 rounded-full ${activeAdminEmail === null ? 'bg-white animate-pulse' : 'bg-gray-700'}`}></div>
+                    </button>
+                    
+                    <div className="h-px bg-white/10 my-4 mx-2"></div>
+                    
+                    {adminUserList.map(ema => (
+                      <button 
+                        key={ema} 
+                        onClick={() => setActiveAdminEmail(ema)} 
+                        className={`w-full text-right p-4 rounded-2xl transition-all truncate text-sm font-bold border ${activeAdminEmail === ema ? 'bg-purple-600 border-purple-400 text-white shadow-lg' : 'hover:bg-white/5 border-white/5 text-gray-400'}`}
+                      >
+                        {ema}
+                      </button>
+                    ))}
+
+                    {adminUserList.length === 0 && (
+                      <div className="p-4 text-center text-gray-600 text-xs font-black italic">No records found</div>
+                    )}
+                  </div>
+                  
+                  <div className="mt-8 pt-6 border-t border-white/10">
                     {isAdminAddingEmail ? (
-                      <div className="space-y-2">
-                        <input type="email" placeholder="new@user.com" value={newAdminEmailInput} onChange={e => setNewAdminEmailInput(e.target.value)} className="w-full bg-white/5 border border-white/10 p-2 rounded-lg text-xs" />
-                        <button onClick={() => { if(newAdminEmailInput) { setActiveAdminEmail(newAdminEmailInput); setIsAdminAddingEmail(false); setNewAdminEmailInput(''); } }} className="w-full bg-cyan-600 py-2 rounded-lg text-xs font-bold">تأكيد</button>
+                      <div className="space-y-3 animate-fade-in">
+                        <input 
+                          type="email" 
+                          placeholder="user@example.com" 
+                          value={newAdminEmailInput} 
+                          onChange={e => setNewAdminEmailInput(e.target.value)} 
+                          className="w-full bg-black/40 border border-white/10 p-3 rounded-xl text-xs outline-none focus:border-cyan-500" 
+                        />
+                        <div className="flex gap-2">
+                          <button onClick={() => { if(newAdminEmailInput) { setActiveAdminEmail(newAdminEmailInput); setIsAdminAddingEmail(false); setNewAdminEmailInput(''); } }} className="flex-1 bg-cyan-600 py-2 rounded-lg text-[10px] font-black uppercase">Assign</button>
+                          <button onClick={() => setIsAdminAddingEmail(false)} className="flex-1 bg-white/5 py-2 rounded-lg text-[10px] font-black uppercase">Cancel</button>
+                        </div>
                       </div>
                     ) : (
-                      <button onClick={() => setIsAdminAddingEmail(true)} className="w-full py-3 border border-dashed border-white/20 text-gray-500 rounded-xl text-xs hover:text-cyan-400">إضافة إيميل جديد</button>
+                      <button 
+                        onClick={() => setIsAdminAddingEmail(true)} 
+                        className="w-full py-4 border border-dashed border-white/20 text-gray-500 rounded-2xl text-[10px] font-black uppercase hover:border-cyan-500/50 hover:text-cyan-400 transition-all flex items-center justify-center gap-2"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 4v16m8-8H4"></path></svg>
+                        Add Manual Target
+                      </button>
                     )}
                   </div>
                 </div>
 
+                {/* Main Control Area */}
                 <div className="lg:col-span-9 space-y-8">
-                  <div className="bg-white/5 p-8 rounded-[2.5rem] border border-white/10">
-                    <h2 className="text-xl font-bold mb-6">إضافة سؤال لـ: <span className="text-cyan-400">{activeAdminEmail || 'الأسئلة العامة'}</span></h2>
-                    <form onSubmit={handleAdminAddQuestion} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <textarea required placeholder="نص السؤال" className="md:col-span-2 bg-white/5 border border-white/10 p-4 rounded-xl" value={adminFormData.question_text} onChange={e => setAdminFormData({...adminFormData, question_text: e.target.value})} />
-                      <input required placeholder="الخيار أ" className="bg-white/5 border border-white/10 p-3 rounded-xl" value={adminFormData.option_a} onChange={e => setAdminFormData({...adminFormData, option_a: e.target.value})} />
-                      <input required placeholder="الخيار ب" className="bg-white/5 border border-white/10 p-3 rounded-xl" value={adminFormData.option_b} onChange={e => setAdminFormData({...adminFormData, option_b: e.target.value})} />
-                      <input required placeholder="الخيار ج" className="bg-white/5 border border-white/10 p-3 rounded-xl" value={adminFormData.option_c} onChange={e => setAdminFormData({...adminFormData, option_c: e.target.value})} />
-                      <select className="bg-[#050510] border border-white/10 p-3 rounded-xl" value={adminFormData.correct_option} onChange={e => setAdminFormData({...adminFormData, correct_option: parseInt(e.target.value)})}>
-                        <option value={0}>الخيار أ صحيح</option>
-                        <option value={1}>الخيار ب صحيح</option>
-                        <option value={2}>الخيار ج صحيح</option>
-                      </select>
-                      <button className="bg-cyan-600 py-3 rounded-xl font-black uppercase tracking-widest">{loading ? '...' : 'Deploy'}</button>
-                      {adminStatus.msg && <p className={`md:col-span-2 text-center text-xs font-bold ${adminStatus.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>{adminStatus.msg}</p>}
+                  <div className="bg-white/5 p-10 rounded-[2.5rem] border border-white/10 relative overflow-hidden backdrop-blur-md">
+                    <div className="absolute top-0 left-0 w-2 h-full bg-cyan-500"></div>
+                    <h2 className="text-2xl font-black mb-8 flex items-center gap-4">
+                      <span>إدارة الأسئلة لـ: </span>
+                      <span className="text-cyan-400 orbitron tracking-wider">{activeAdminEmail || 'القطاع العام'}</span>
+                    </h2>
+                    
+                    <form onSubmit={handleAdminAddQuestion} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="md:col-span-2">
+                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 block">Question Data Payload</label>
+                        <textarea 
+                          required 
+                          placeholder="أدخل نص السؤال هنا..." 
+                          className="w-full bg-black/40 border border-white/10 p-5 rounded-2xl text-lg font-bold outline-none focus:border-cyan-500 min-h-[100px]" 
+                          value={adminFormData.question_text} 
+                          onChange={e => setAdminFormData({...adminFormData, question_text: e.target.value})} 
+                        />
+                      </div>
+                      
+                      <div className="space-y-4">
+                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2 block">Answer Options</label>
+                        <input required placeholder="خيار أ" className="w-full bg-black/40 border border-white/10 p-4 rounded-xl text-sm outline-none focus:border-cyan-500" value={adminFormData.option_a} onChange={e => setAdminFormData({...adminFormData, option_a: e.target.value})} />
+                        <input required placeholder="خيار ب" className="w-full bg-black/40 border border-white/10 p-4 rounded-xl text-sm outline-none focus:border-cyan-500" value={adminFormData.option_b} onChange={e => setAdminFormData({...adminFormData, option_b: e.target.value})} />
+                        <input required placeholder="خيار ج" className="w-full bg-black/40 border border-white/10 p-4 rounded-xl text-sm outline-none focus:border-cyan-500" value={adminFormData.option_c} onChange={e => setAdminFormData({...adminFormData, option_c: e.target.value})} />
+                      </div>
+
+                      <div className="flex flex-col justify-between">
+                        <div>
+                          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-4 block">Correct Key Selection</label>
+                          <select 
+                            className="w-full bg-black border border-white/10 p-4 rounded-xl orbitron text-sm outline-none focus:border-emerald-500 font-bold" 
+                            value={adminFormData.correct_option} 
+                            onChange={e => setAdminFormData({...adminFormData, correct_option: parseInt(e.target.value)})}
+                          >
+                            <option value={0}>OPTION A (ALPHA)</option>
+                            <option value={1}>OPTION B (BETA)</option>
+                            <option value={2}>OPTION C (GAMMA)</option>
+                          </select>
+                        </div>
+                        
+                        <div className="mt-8">
+                          {adminStatus.msg && (
+                            <div className={`text-center p-3 rounded-xl mb-4 text-xs font-black ${adminStatus.type === 'success' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+                              {adminStatus.msg}
+                            </div>
+                          )}
+                          <button className="w-full py-5 bg-gradient-to-r from-cyan-600 to-blue-700 hover:from-cyan-500 hover:to-blue-600 rounded-2xl font-black orbitron text-xl shadow-lg active:scale-95 transition-all">
+                            {loading ? 'UPLOADING...' : 'DEPLOY CONTENT'}
+                          </button>
+                        </div>
+                      </div>
                     </form>
                   </div>
-                  <div className="bg-white/5 p-8 rounded-[2.5rem] border border-white/10">
-                    <h3 className="orbitron text-xs text-gray-500 mb-6 tracking-widest">CURRENT RECORDS</h3>
+
+                  <div className="bg-white/5 p-10 rounded-[2.5rem] border border-white/10 backdrop-blur-md">
+                    <h3 className="orbitron text-[10px] text-gray-500 mb-8 tracking-[0.5em] uppercase font-black text-center">Active Data Logs</h3>
                     <div className="space-y-4">
-                      {allQuestions.filter(q => q.assigned_to_ema === activeAdminEmail).map(q => (
-                        <div key={q.id} className="bg-black/20 p-4 rounded-2xl flex justify-between items-center border border-white/5">
-                          <div>
-                            <p className="font-bold text-white">{q.question_text}</p>
-                            <div className="flex gap-4 text-[10px] text-gray-500 mt-1">
-                              <span className={q.correct_option === 0 ? 'text-green-400' : ''}>أ: {q.option_a}</span>
-                              <span className={q.correct_option === 1 ? 'text-green-400' : ''}>ب: {q.option_b}</span>
-                              <span className={q.correct_option === 2 ? 'text-green-400' : ''}>ج: {q.option_c}</span>
+                      {allQuestions.filter(q => q.assigned_to_email === activeAdminEmail).map(q => (
+                        <div key={q.id} className="bg-black/40 p-6 rounded-[2rem] flex justify-between items-center border border-white/5 hover:border-white/10 transition-all group">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-3">
+                               <span className="text-[8px] bg-cyan-900/40 text-cyan-400 px-3 py-1 rounded-full orbitron font-black border border-cyan-500/20 uppercase tracking-tighter">DATA_NODE_{q.id.toString().slice(-4)}</span>
+                            </div>
+                            <p className="font-bold text-lg text-white mb-4">{q.question_text}</p>
+                            <div className="flex flex-wrap gap-3">
+                              {[q.option_a, q.option_b, q.option_c].map((opt, i) => (
+                                <div key={i} className={`px-4 py-2 rounded-xl text-[10px] font-bold border ${q.correct_option === i ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-400' : 'bg-black/30 border-white/5 text-gray-500'}`}>
+                                  {opt}
+                                </div>
+                              ))}
                             </div>
                           </div>
-                          <button onClick={() => deleteAdminQuestion(q.id)} className="p-2 text-red-500/50 hover:text-red-500">✕</button>
+                          <button 
+                            onClick={() => deleteAdminQuestion(q.id)} 
+                            className="p-4 bg-red-500/10 text-red-500 rounded-2xl hover:bg-red-500 hover:text-white transition-all transform hover:rotate-12 active:scale-90 opacity-40 group-hover:opacity-100"
+                          >
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                          </button>
                         </div>
                       ))}
+                      {allQuestions.filter(q => q.assigned_to_email === activeAdminEmail).length === 0 && (
+                        <div className="py-20 text-center border-2 border-dashed border-white/5 rounded-[3rem]">
+                           <p className="orbitron text-xs text-gray-600 font-black tracking-widest uppercase italic">Node Empty: No Data Records Found</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -384,7 +530,7 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* REST OF GAME SCREENS */}
+      {/* GAME SCREENS - INTRO, BRIEFING, PLAYING, RESULT... (KEEP UNCHANGED) */}
       {gameState === GameState.INTRO && (
         <div className="z-10 h-full w-full flex flex-col items-center justify-center animate-fade-in p-4 text-center">
             <h1 className="text-7xl font-black orbitron mb-4">RA <span className="text-emerald-400">O</span> NCHT</h1>
