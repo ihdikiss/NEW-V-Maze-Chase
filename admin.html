@@ -1,56 +1,296 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>404 - Sector Decommissioned</title>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+    <title>9RA O NCHT - Command Center</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Noto+Sans+Arabic:wght@400;700&display=swap" rel="stylesheet">
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom": "https://esm.sh/react-dom@18.2.0",
+        "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.45.1"
+      }
+    }
+    </script>
     <style>
-        body { 
-            background-color: #050510; 
-            color: #4a90e2; 
-            font-family: 'Orbitron', sans-serif; 
-            display: flex; 
-            flex-direction: column;
-            align-items: center; 
-            justify-content: center; 
-            height: 100vh; 
-            margin: 0; 
-            text-align: center; 
-            overflow: hidden;
+        body {
+            background-color: #050510;
+            color: #e2e8f0;
+            font-family: 'Noto Sans Arabic', sans-serif;
+            margin: 0;
+            overflow-x: hidden;
         }
-        .container {
-            border: 2px solid rgba(0, 242, 255, 0.2);
-            padding: 3rem;
-            border-radius: 2rem;
-            background: rgba(10, 10, 32, 0.8);
-            box-shadow: 0 0 50px rgba(0, 242, 255, 0.1);
+        .orbitron { font-family: 'Orbitron', sans-serif; }
+        .glass {
+            background: rgba(15, 15, 35, 0.8);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 242, 255, 0.2);
         }
-        h1 { font-size: 5rem; margin: 0; color: #ff4d4d; text-shadow: 0 0 20px rgba(255, 77, 77, 0.5); }
-        p { font-size: 1.2rem; margin-bottom: 2rem; color: #888; }
-        a { 
-            color: #00f2ff; 
-            text-decoration: none; 
-            border: 1px solid #00f2ff; 
-            padding: 1rem 2rem; 
-            border-radius: 1rem; 
-            font-weight: bold;
-            transition: 0.3s;
-            text-transform: uppercase;
-            letter-spacing: 2px;
+        .neon-border {
+            box-shadow: 0 0 15px rgba(0, 242, 255, 0.3);
+            border: 1px solid rgba(0, 242, 255, 0.5);
         }
-        a:hover { 
-            background: #00f2ff; 
-            color: #050510; 
-            box-shadow: 0 0 30px #00f2ff;
+        input, select, textarea {
+            background: rgba(255, 255, 255, 0.05) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            color: white !important;
         }
+        input:focus { border-color: #00f2ff !important; outline: none; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>404</h1>
-        <p>ACCESS DENIED: THIS SECTOR HAS BEEN PURGED</p>
-        <a href="/">Back to Mission Control</a>
-    </div>
+    <div id="admin-root"></div>
+
+    <script type="module">
+        import React, { useState, useEffect } from 'react';
+        import ReactDOM from 'react-dom';
+        import { createClient } from '@supabase/supabase-js';
+
+        const supabaseUrl = 'https://sogywxbavcwtbtcirvsw.supabase.co';
+        const supabaseKey = 'sb_publishable_svYdUF0MDpCbpjZ2jyAPww_1UlwAtAV';
+        const supabase = createClient(supabaseUrl, supabaseKey);
+
+        const AdminPortal = () => {
+            const [isLoggedIn, setIsLoggedIn] = useState(false);
+            const [password, setPassword] = useState('');
+            const [activeTab, setActiveTab] = useState('general');
+            const [questions, setQuestions] = useState([]);
+            const [loading, setLoading] = useState(false);
+            const [status, setStatus] = useState('');
+
+            // Form State
+            const [formData, setFormData] = useState({
+                question_text: '',
+                option_a: '',
+                option_b: '',
+                option_c: '',
+                correct_option: 0,
+                assigned_to_ema: ''
+            });
+
+            const handleLogin = (e) => {
+                e.preventDefault();
+                if (password === 'ADMIN_9RA_2025') {
+                    setIsLoggedIn(true);
+                } else {
+                    alert('كلمة السر غير صحيحة - Access Denied');
+                }
+            };
+
+            const fetchQuestions = async () => {
+                setLoading(true);
+                const { data, error } = await supabase
+                    .from('custom_questions')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+                
+                if (data) setQuestions(data);
+                setLoading(false);
+            };
+
+            useEffect(() => {
+                if (isLoggedIn) fetchQuestions();
+            }, [isLoggedIn]);
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                setLoading(true);
+                const payload = { ...formData };
+                if (activeTab === 'general') payload.assigned_to_ema = null;
+
+                const { error } = await supabase
+                    .from('custom_questions')
+                    .insert([payload]);
+
+                if (error) {
+                    setStatus('خطأ في الإرسال: ' + error.message);
+                } else {
+                    setStatus('تمت إضافة السؤال بنجاح!');
+                    setFormData({
+                        question_text: '',
+                        option_a: '',
+                        option_b: '',
+                        option_c: '',
+                        correct_option: 0,
+                        assigned_to_ema: activeTab === 'user' ? formData.assigned_to_ema : ''
+                    });
+                    fetchQuestions();
+                }
+                setLoading(false);
+                setTimeout(() => setStatus(''), 3000);
+            };
+
+            const deleteQuestion = async (id) => {
+                if (!confirm('هل أنت متأكد من حذف هذا السؤال؟')) return;
+                const { error } = await supabase.from('custom_questions').delete().eq('id', id);
+                if (!error) fetchQuestions();
+            };
+
+            if (!isLoggedIn) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center p-4">
+                        <div className="glass p-10 rounded-[2.5rem] w-full max-w-md neon-border text-center">
+                            <h1 className="orbitron text-4xl font-black text-cyan-400 mb-8 uppercase tracking-tighter">Command Login</h1>
+                            <form onSubmit={handleLogin} className="space-y-6">
+                                <input 
+                                    type="password" 
+                                    placeholder="Enter Access Key..."
+                                    className="w-full p-4 rounded-xl text-center text-xl"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                />
+                                <button className="w-full py-4 bg-cyan-600 hover:bg-cyan-500 rounded-xl font-black orbitron transition-all">
+                                    INITIATE LINK
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                );
+            }
+
+            const generalQuestions = questions.filter(q => !q.assigned_to_ema);
+            const userQuestions = questions.filter(q => q.assigned_to_ema);
+            const uniqueUsers = [...new Set(userQuestions.map(q => q.assigned_to_ema))];
+
+            return (
+                <div className="min-h-screen p-4 md:p-8 max-w-6xl mx-auto">
+                    <header className="flex justify-between items-center mb-10 bg-black/40 p-6 rounded-2xl border border-white/5">
+                        <div className="text-right">
+                            <h1 className="orbitron text-3xl font-black text-white">MISSION CONTROL</h1>
+                            <p className="text-cyan-400 text-xs font-bold tracking-widest uppercase">Admin Dashboard</p>
+                        </div>
+                        <button onClick={() => window.location.href = '/'} className="px-6 py-2 border border-red-500/50 text-red-400 rounded-full hover:bg-red-500 hover:text-white transition-all text-sm font-bold">
+                            الرجوع للمهمة
+                        </button>
+                    </header>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        {/* Control Panel */}
+                        <div className="lg:col-span-1 space-y-6">
+                            <div className="glass p-6 rounded-3xl neon-border">
+                                <div className="flex gap-2 mb-6">
+                                    <button 
+                                        onClick={() => setActiveTab('general')}
+                                        className={`flex-1 py-2 rounded-lg font-bold text-sm ${activeTab === 'general' ? 'bg-cyan-600' : 'bg-white/5'}`}
+                                    >أسئلة عامة</button>
+                                    <button 
+                                        onClick={() => setActiveTab('user')}
+                                        className={`flex-1 py-2 rounded-lg font-bold text-sm ${activeTab === 'user' ? 'bg-purple-600' : 'bg-white/5'}`}
+                                    >أسئلة مخصصة</button>
+                                </div>
+
+                                <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                                    <span className="w-2 h-2 bg-cyan-400 rounded-full animate-ping"></span>
+                                    إضافة سؤال جديد
+                                </h2>
+
+                                <form onSubmit={handleSubmit} className="space-y-4">
+                                    {activeTab === 'user' && (
+                                        <div>
+                                            <label className="text-[10px] text-gray-500 block mb-1">إيميل اللاعب المستهدف</label>
+                                            <input 
+                                                required
+                                                type="email" 
+                                                placeholder="user@example.com"
+                                                className="w-full p-3 rounded-lg text-sm"
+                                                value={formData.assigned_to_ema}
+                                                onChange={e => setFormData({...formData, assigned_to_ema: e.target.value})}
+                                            />
+                                        </div>
+                                    )}
+                                    <div>
+                                        <label className="text-[10px] text-gray-500 block mb-1">نص السؤال</label>
+                                        <textarea 
+                                            required
+                                            rows="2"
+                                            className="w-full p-3 rounded-lg text-sm"
+                                            value={formData.question_text}
+                                            onChange={e => setFormData({...formData, question_text: e.target.value})}
+                                        ></textarea>
+                                    </div>
+                                    <div className="grid grid-cols-1 gap-2">
+                                        <input required placeholder="الخيار أ" className="p-2 rounded-lg text-sm" value={formData.option_a} onChange={e => setFormData({...formData, option_a: e.target.value})} />
+                                        <input required placeholder="الخيار ب" className="p-2 rounded-lg text-sm" value={formData.option_b} onChange={e => setFormData({...formData, option_b: e.target.value})} />
+                                        <input required placeholder="الخيار ج" className="p-2 rounded-lg text-sm" value={formData.option_c} onChange={e => setFormData({...formData, option_c: e.target.value})} />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] text-gray-500 block mb-1">الخيار الصحيح</label>
+                                        <select 
+                                            className="w-full p-3 rounded-lg text-sm"
+                                            value={formData.correct_option}
+                                            onChange={e => setFormData({...formData, correct_option: parseInt(e.target.value)})}
+                                        >
+                                            <option value={0}>الخيار أ</option>
+                                            <option value={1}>الخيار ب</option>
+                                            <option value={2}>الخيار ج</option>
+                                        </select>
+                                    </div>
+                                    {status && <p className="text-xs text-center font-bold text-cyan-400">{status}</p>}
+                                    <button 
+                                        disabled={loading}
+                                        className="w-full py-3 bg-gradient-to-r from-cyan-600 to-blue-700 rounded-xl font-black text-sm uppercase tracking-widest shadow-lg active:scale-95 transition-all"
+                                    >
+                                        {loading ? 'PROCESSING...' : 'UPLOADING DATA'}
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+
+                        {/* Database View */}
+                        <div className="lg:col-span-2 space-y-6">
+                            <div className="glass p-6 rounded-3xl min-h-[500px]">
+                                <h2 className="orbitron text-2xl font-black mb-6 border-b border-white/5 pb-4">
+                                    {activeTab === 'general' ? 'GLOBAL SECTORS' : 'USER-SPECIFIC ARRAYS'}
+                                </h2>
+
+                                {loading && questions.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center h-64 text-cyan-400/50">
+                                        <div className="w-12 h-12 border-4 border-cyan-400 border-t-transparent rounded-full animate-spin mb-4"></div>
+                                        <p className="orbitron animate-pulse">SYNCING DATABASE...</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4">
+                                        {(activeTab === 'general' ? generalQuestions : userQuestions).map(q => (
+                                            <div key={q.id} className="bg-white/5 border border-white/5 p-4 rounded-2xl flex justify-between items-start hover:bg-white/[0.08] transition-all">
+                                                <div>
+                                                    <div className="flex gap-2 items-center mb-2">
+                                                        <span className="text-[8px] bg-cyan-600/30 text-cyan-400 px-2 py-0.5 rounded uppercase font-black">ID: {q.id.toString().slice(-4)}</span>
+                                                        {q.assigned_to_ema && <span className="text-[8px] bg-purple-600 text-white px-2 py-0.5 rounded font-bold">{q.assigned_to_ema}</span>}
+                                                    </div>
+                                                    <p className="font-bold text-white mb-2">{q.question_text}</p>
+                                                    <div className="flex gap-3 text-[10px] text-gray-500">
+                                                        <span className={q.correct_option === 0 ? 'text-green-400 font-bold' : ''}>أ: {q.option_a}</span>
+                                                        <span className={q.correct_option === 1 ? 'text-green-400 font-bold' : ''}>ب: {q.option_b}</span>
+                                                        <span className={q.correct_option === 2 ? 'text-green-400 font-bold' : ''}>ج: {q.option_c}</span>
+                                                    </div>
+                                                </div>
+                                                <button 
+                                                    onClick={() => deleteQuestion(q.id)}
+                                                    className="p-2 text-red-500/50 hover:text-red-500 transition-colors"
+                                                >
+                                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                                </button>
+                                            </div>
+                                        ))}
+
+                                        {(activeTab === 'general' ? generalQuestions : userQuestions).length === 0 && (
+                                            <div className="text-center py-20 text-gray-600 font-bold italic">
+                                                No sectors found in this array.
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<AdminPortal />, document.getElementById('admin-root'));
+    </script>
 </body>
 </html>
