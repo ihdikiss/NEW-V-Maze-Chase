@@ -31,7 +31,7 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   
-  // Game state refs - Strictly keeping existing variables
+  // Game state refs
   const playerRef = useRef({ 
     x: 0, y: 0, width: 44, height: 44, dir: 'up', animFrame: 0, 
     isShielded: false, shieldTime: 0, ammo: 0, isDead: false,
@@ -467,7 +467,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     ctx.save();
     ctx.translate(e.x, e.y + Math.sin(e.frame) * 8);
 
-    // 1. MOTION TRAIL (Ghosting effect)
     if (speed > 0.5 && isActive) {
       for (let i = 1; i <= 2; i++) {
         ctx.save();
@@ -483,7 +482,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
 
     ctx.rotate(e.rotation);
 
-    // 2. SHIFTING ARMOR PLATES (Outer hull)
     const shift = isActive ? Math.sin(time / 200) * 4 : 0;
     ctx.fillStyle = '#1e272e';
     for (let i = 0; i < 4; i++) {
@@ -497,14 +495,12 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
       ctx.closePath();
       ctx.fill();
       
-      // Edge Highlights
       ctx.strokeStyle = isActive ? 'rgba(255, 77, 77, 0.4)' : 'rgba(100, 100, 100, 0.3)';
       ctx.lineWidth = 1;
       ctx.stroke();
       ctx.restore();
     }
 
-    // 3. IONIC RINGS (Vertical rotation)
     ctx.save();
     ctx.rotate(time / 500);
     ctx.strokeStyle = isActive ? 'rgba(255, 77, 77, 0.2)' : 'rgba(50, 50, 50, 0.1)';
@@ -514,7 +510,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     ctx.stroke();
     ctx.restore();
 
-    // 4. CORE ENGINE (Small thruster flicker if active)
     if (isActive) {
       ctx.save();
       const engineFlicker = 5 + Math.random() * 5;
@@ -528,17 +523,14 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
       ctx.restore();
     }
 
-    // 5. THE VOID EYE (High-tech lens)
     const eyePulse = (Math.sin(time / 150) + 1) / 2;
     const eyeGlow = isActive ? 15 + eyePulse * 15 : 5;
     
-    // Lens outer circle
     ctx.fillStyle = '#0a0a0a';
     ctx.beginPath();
     ctx.arc(0, 0, 12, 0, Math.PI * 2);
     ctx.fill();
 
-    // Glowing pupil
     ctx.shadowBlur = eyeGlow;
     ctx.shadowColor = '#ff4d4d';
     ctx.fillStyle = isActive ? '#ff4d4d' : '#4a0000';
@@ -546,7 +538,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     ctx.arc(0, 0, 5 + eyePulse * 2, 0, Math.PI * 2);
     ctx.fill();
     
-    // Reflection on lens
     ctx.shadowBlur = 0;
     ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
     ctx.beginPath();
@@ -634,47 +625,64 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     <div ref={containerRef} className="absolute inset-0 w-full h-full flex items-center justify-center overflow-hidden bg-[#050510]">
       <canvas ref={canvasRef} width={dimensions.width} height={dimensions.height} className="w-full h-full block" />
       
-      {/* Mobile Controls Layer */}
+      {/* Modern Transparent Mobile Controls (Battle Royale Style) */}
       {dimensions.width < 1024 && (
         <div className="absolute inset-0 z-30 pointer-events-none select-none">
-          {/* D-Pad Container */}
-          <div className="absolute bottom-8 left-8 w-44 h-44 flex flex-col items-center justify-center pointer-events-auto">
-            <div className="flex flex-col gap-2">
+          
+          {/* Left Side: Transparent Circular D-Pad - Resized to Medium (w-36 h-36) */}
+          <div className="absolute bottom-10 left-10 w-36 h-36 pointer-events-auto">
+            <div className="relative w-full h-full flex items-center justify-center rounded-full border-2 border-white/20 bg-white/5 backdrop-blur-[1px] opacity-40 active:opacity-80 transition-all">
+              {/* Central Tracking Plate */}
+              <div className="absolute w-12 h-12 rounded-full border border-white/30 bg-white/10 shadow-inner z-0"></div>
+              
+              {/* Directional Buttons - Scaled to fit w-36 */}
               <button 
-                className="w-16 h-16 bg-white/10 border border-white/20 rounded-2xl active:bg-cyan-500/40 backdrop-blur-md flex items-center justify-center text-3xl text-white"
+                className="absolute top-1 w-12 h-12 flex items-center justify-center active:scale-95 transition-transform"
                 onTouchStart={() => handleMobileTouch('ArrowUp', true)}
                 onTouchEnd={() => handleMobileTouch('ArrowUp', false)}
-              >↑</button>
-              <div className="flex gap-2">
-                <button 
-                  className="w-16 h-16 bg-white/10 border border-white/20 rounded-2xl active:bg-cyan-500/40 backdrop-blur-md flex items-center justify-center text-3xl text-white"
-                  onTouchStart={() => handleMobileTouch('ArrowLeft', true)}
-                  onTouchEnd={() => handleMobileTouch('ArrowLeft', false)}
-                >←</button>
-                <div className="w-16 h-16"></div> {/* Center Spacer */}
-                <button 
-                  className="w-16 h-16 bg-white/10 border border-white/20 rounded-2xl active:bg-cyan-500/40 backdrop-blur-md flex items-center justify-center text-3xl text-white"
-                  onTouchStart={() => handleMobileTouch('ArrowRight', true)}
-                  onTouchEnd={() => handleMobileTouch('ArrowRight', false)}
-                >→</button>
-              </div>
+              >
+                <div className="w-8 h-8 rounded-lg border border-white/20 flex items-center justify-center bg-white/5 active:bg-white/20"><span className="text-white text-base">▲</span></div>
+              </button>
+              
               <button 
-                className="w-16 h-16 bg-white/10 border border-white/20 rounded-2xl active:bg-cyan-500/40 backdrop-blur-md flex items-center justify-center text-3xl text-white"
+                className="absolute bottom-1 w-12 h-12 flex items-center justify-center active:scale-95 transition-transform"
                 onTouchStart={() => handleMobileTouch('ArrowDown', true)}
                 onTouchEnd={() => handleMobileTouch('ArrowDown', false)}
-              >↓</button>
+              >
+                <div className="w-8 h-8 rounded-lg border border-white/20 flex items-center justify-center bg-white/5 active:bg-white/20"><span className="text-white text-base">▼</span></div>
+              </button>
+
+              <button 
+                className="absolute left-1 w-12 h-12 flex items-center justify-center active:scale-95 transition-transform"
+                onTouchStart={() => handleMobileTouch('ArrowLeft', true)}
+                onTouchEnd={() => handleMobileTouch('ArrowLeft', false)}
+              >
+                <div className="w-8 h-8 rounded-lg border border-white/20 flex items-center justify-center bg-white/5 active:bg-white/20"><span className="text-white text-base">◀</span></div>
+              </button>
+
+              <button 
+                className="absolute right-1 w-12 h-12 flex items-center justify-center active:scale-95 transition-transform"
+                onTouchStart={() => handleMobileTouch('ArrowRight', true)}
+                onTouchEnd={() => handleMobileTouch('ArrowRight', false)}
+              >
+                <div className="w-8 h-8 rounded-lg border border-white/20 flex items-center justify-center bg-white/5 active:bg-white/20"><span className="text-white text-base">▶</span></div>
+              </button>
             </div>
           </div>
 
-          {/* Bomb Button */}
+          {/* Right Side: Elegant Circular Bomb Button */}
           <div className="absolute bottom-12 right-12 pointer-events-auto">
-            <button 
-              className="w-24 h-24 bg-red-600/30 border-2 border-red-500 rounded-full flex items-center justify-center text-5xl backdrop-blur-lg animate-bomb-pulse active:scale-90 transition-transform"
-              onTouchStart={handleBombPress}
-            >
-              💣
-            </button>
+            <div className="flex flex-col items-center gap-2">
+              <span className="text-[9px] font-black orbitron text-white/40 tracking-[0.2em] uppercase">Tactical Strike</span>
+              <button 
+                className="w-24 h-24 rounded-full border-2 border-white/40 bg-white/5 backdrop-blur-sm flex items-center justify-center text-4xl opacity-40 active:opacity-80 active:scale-90 transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                onTouchStart={handleBombPress}
+              >
+                <span className="drop-shadow-[0_0_10px_rgba(255,255,255,0.4)]">💣</span>
+              </button>
+            </div>
           </div>
+          
         </div>
       )}
     </div>
