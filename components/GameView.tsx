@@ -224,7 +224,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
 
     const p = playerRef.current;
     if (!p.isDead) {
-      // Use persistent movement vector instead of raw keys state
       let inputX = currentMoveVec.current.x;
       let inputY = currentMoveVec.current.y;
 
@@ -232,12 +231,38 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
         const mag = Math.hypot(inputX, inputY);
         const dx = (inputX / mag) * PLAYER_SPEED;
         const dy = (inputY / mag) * PLAYER_SPEED;
-        p.vx = dx; p.vy = dy;
         
-        // Sliding logic: if blocked in one axis, allow movement in the other
+        // --- SMART CORNERING / NUDGE LOGIC ---
+        // If moving vertically and trying to move horizontally, nudge towards lane center
+        const nudgeStrength = 2.5; // Smooth auto-centering speed
+        const nudgeThreshold = 22; // How close to the gap we need to be to trigger nudge
+
+        let canMoveX = !checkCollision(p.x + dx, p.y);
+        let canMoveY = !checkCollision(p.x, p.y + dy);
+
+        // Nudge for Horizontal Intent (Left/Right)
+        if (inputX !== 0 && !canMoveX && inputY === 0) {
+          for(let i = 1; i <= nudgeThreshold; i++) {
+            if(!checkCollision(p.x + dx, p.y - i)) { p.y -= nudgeStrength; break; }
+            if(!checkCollision(p.x + dx, p.y + i)) { p.y += nudgeStrength; break; }
+          }
+        }
+        // Nudge for Vertical Intent (Up/Down)
+        if (inputY !== 0 && !canMoveY && inputX === 0) {
+          for(let i = 1; i <= nudgeThreshold; i++) {
+            if(!checkCollision(p.x - i, p.y + dy)) { p.x -= nudgeStrength; break; }
+            if(!checkCollision(p.x + i, p.y + dy)) { p.x += nudgeStrength; break; }
+          }
+        }
+
+        // Finalize movements after potential nudges
+        canMoveX = !checkCollision(p.x + dx, p.y);
+        canMoveY = !checkCollision(p.x, p.y + dy);
+
+        p.vx = dx; p.vy = dy;
         let moved = false;
-        if (!checkCollision(p.x + dx, p.y)) { p.x += dx; moved = true; }
-        if (!checkCollision(p.x, p.y + dy)) { p.y += dy; moved = true; }
+        if (canMoveX) { p.x += dx; moved = true; }
+        if (canMoveY) { p.y += dy; moved = true; }
         
         if (moved) {
           if (Math.abs(dx) > Math.abs(dy)) p.dir = dx > 0 ? 'right' : 'left';
@@ -246,7 +271,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
           p.currentAngle = lerpAngle(p.currentAngle, targetAngle, 0.15);
           p.moveIntensity = Math.min(p.moveIntensity + 0.1, 1);
         } else {
-          // If totally blocked, stop animation intensity
           p.moveIntensity = Math.max(p.moveIntensity - 0.1, 0);
         }
       } else {
@@ -617,9 +641,7 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   };
 
   const handleMobileTouch = (key: string, start: boolean) => {
-    // Only update movement vector on touch start to enable persistent movement
     if (!start) return;
-    
     if (key === 'ArrowUp') currentMoveVec.current = { x: 0, y: -1 };
     else if (key === 'ArrowDown') currentMoveVec.current = { x: 0, y: 1 };
     else if (key === 'ArrowLeft') currentMoveVec.current = { x: -1, y: 0 };
@@ -633,15 +655,12 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Directional keys set the persistent movement vector
       if (['ArrowUp', 'w'].includes(e.key)) currentMoveVec.current = { x: 0, y: -1 };
       else if (['ArrowDown', 's'].includes(e.key)) currentMoveVec.current = { x: 0, y: 1 };
       else if (['ArrowLeft', 'a'].includes(e.key)) currentMoveVec.current = { x: -1, y: 0 };
       else if (['ArrowRight', 'd'].includes(e.key)) currentMoveVec.current = { x: 1, y: 0 };
-      
       if (e.code === 'Space') fireProjectile();
     };
-    
     window.addEventListener('keydown', handleKeyDown);
     rafRef.current = requestAnimationFrame(update);
     return () => { window.removeEventListener('keydown', handleKeyDown); cancelAnimationFrame(rafRef.current); };
@@ -650,61 +669,33 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   return (
     <div ref={containerRef} className="absolute inset-0 w-full h-full flex items-center justify-center overflow-hidden bg-[#050510]">
       <canvas ref={canvasRef} width={dimensions.width} height={dimensions.height} className="w-full h-full block" />
-      
-      {/* Modern Transparent Mobile Controls (Battle Royale Style) */}
       {dimensions.width < 1024 && (
         <div className="absolute inset-0 z-30 pointer-events-none select-none">
-          
-          {/* Left Side: Transparent Circular D-Pad - Resized to Medium (w-36 h-36) */}
           <div className="absolute bottom-10 left-10 w-36 h-36 pointer-events-auto">
             <div className="relative w-full h-full flex items-center justify-center rounded-full border-2 border-white/20 bg-white/5 backdrop-blur-[1px] opacity-40 active:opacity-80 transition-all">
-              {/* Central Tracking Plate */}
               <div className="absolute w-12 h-12 rounded-full border border-white/30 bg-white/10 shadow-inner z-0"></div>
-              
-              {/* Directional Buttons - Scaled to fit w-36 */}
-              <button 
-                className="absolute top-1 w-12 h-12 flex items-center justify-center active:scale-95 transition-transform"
-                onTouchStart={() => handleMobileTouch('ArrowUp', true)}
-              >
+              <button className="absolute top-1 w-12 h-12 flex items-center justify-center active:scale-95 transition-transform" onTouchStart={() => handleMobileTouch('ArrowUp', true)}>
                 <div className="w-8 h-8 rounded-lg border border-white/20 flex items-center justify-center bg-white/5 active:bg-white/20"><span className="text-white text-base">▲</span></div>
               </button>
-              
-              <button 
-                className="absolute bottom-1 w-12 h-12 flex items-center justify-center active:scale-95 transition-transform"
-                onTouchStart={() => handleMobileTouch('ArrowDown', true)}
-              >
+              <button className="absolute bottom-1 w-12 h-12 flex items-center justify-center active:scale-95 transition-transform" onTouchStart={() => handleMobileTouch('ArrowDown', true)}>
                 <div className="w-8 h-8 rounded-lg border border-white/20 flex items-center justify-center bg-white/5 active:bg-white/20"><span className="text-white text-base">▼</span></div>
               </button>
-
-              <button 
-                className="absolute left-1 w-12 h-12 flex items-center justify-center active:scale-95 transition-transform"
-                onTouchStart={() => handleMobileTouch('ArrowLeft', true)}
-              >
+              <button className="absolute left-1 w-12 h-12 flex items-center justify-center active:scale-95 transition-transform" onTouchStart={() => handleMobileTouch('ArrowLeft', true)}>
                 <div className="w-8 h-8 rounded-lg border border-white/20 flex items-center justify-center bg-white/5 active:bg-white/20"><span className="text-white text-base">◀</span></div>
               </button>
-
-              <button 
-                className="absolute right-1 w-12 h-12 flex items-center justify-center active:scale-95 transition-transform"
-                onTouchStart={() => handleMobileTouch('ArrowRight', true)}
-              >
+              <button className="absolute right-1 w-12 h-12 flex items-center justify-center active:scale-95 transition-transform" onTouchStart={() => handleMobileTouch('ArrowRight', true)}>
                 <div className="w-8 h-8 rounded-lg border border-white/20 flex items-center justify-center bg-white/5 active:bg-white/20"><span className="text-white text-base">▶</span></div>
               </button>
             </div>
           </div>
-
-          {/* Right Side: Elegant Circular Bomb Button */}
           <div className="absolute bottom-12 right-12 pointer-events-auto">
             <div className="flex flex-col items-center gap-2">
               <span className="text-[9px] font-black orbitron text-white/40 tracking-[0.2em] uppercase">Tactical Strike</span>
-              <button 
-                className="w-24 h-24 rounded-full border-2 border-white/40 bg-white/5 backdrop-blur-sm flex items-center justify-center text-4xl opacity-40 active:opacity-80 active:scale-90 transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)]"
-                onTouchStart={handleBombPress}
-              >
+              <button className="w-24 h-24 rounded-full border-2 border-white/40 bg-white/5 backdrop-blur-sm flex items-center justify-center text-4xl opacity-40 active:opacity-80 active:scale-90 transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)]" onTouchStart={handleBombPress}>
                 <span className="drop-shadow-[0_0_10px_rgba(255,255,255,0.4)]">💣</span>
               </button>
             </div>
           </div>
-          
         </div>
       )}
     </div>
