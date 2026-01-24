@@ -10,14 +10,14 @@ import { supabase } from './lib/supabase';
 /**
  * COMPONENT: AdminDashboard
  * Isolated view for mission control.
- * Updated to fix auto-fetch on selection and state isolation.
+ * Optimized for immediate UI updates and state isolation.
  */
 const AdminDashboard: React.FC = () => {
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [adminPassInput, setAdminPassInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [allQuestions, setAllQuestions] = useState<any[]>([]);
-  const [adminQuestions, setAdminQuestions] = useState<any[]>([]); // Isolated state for current target
+  const [adminQuestions, setAdminQuestions] = useState<any[]>([]); 
   const [registeredUsers, setRegisteredUsers] = useState<string[]>([]);
   const [activeAdminEmail, setActiveAdminEmail] = useState<string | null>(null);
   const [adminStatus, setAdminStatus] = useState({ type: '', msg: '' });
@@ -29,7 +29,7 @@ const AdminDashboard: React.FC = () => {
     correct_option: 'A'
   });
 
-  // Fetch all users and general question counts for the sidebar
+  // Fetch all users and general question counts for the sidebar display
   const fetchSidebarData = async () => {
     try {
       const { data: qData } = await supabase.from('custom_questions').select('assigned_to_email');
@@ -39,8 +39,8 @@ const AdminDashboard: React.FC = () => {
     } catch (err) { console.error("Admin Sidebar Fetch Error:", err); }
   };
 
-  // Fetch questions for the currently active email selection
-  const fetchTargetQuestions = async () => {
+  // Fetch questions for the currently active target (email or null)
+  const fetchTargetQuestions = useCallback(async () => {
     setLoading(true);
     try {
       const cleanEmail = activeAdminEmail ? activeAdminEmail.trim().toLowerCase() : null;
@@ -60,18 +60,17 @@ const AdminDashboard: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeAdminEmail]);
 
-  // Initial fetch for sidebar
+  // Handle Dashboard Login initialization
   useEffect(() => { 
-    if (isAdminLoggedIn) fetchSidebarData(); 
-  }, [isAdminLoggedIn]);
+    if (isAdminLoggedIn) {
+      fetchSidebarData();
+      fetchTargetQuestions();
+    }
+  }, [isAdminLoggedIn, fetchTargetQuestions]);
 
-  // Auto-fetch questions whenever the active email selection changes
-  useEffect(() => {
-    if (isAdminLoggedIn) fetchTargetQuestions();
-  }, [activeAdminEmail, isAdminLoggedIn]);
-
+  // Handle Question Deletion with immediate state update
   const handleDeleteQuestion = async (id: number) => {
     if (!window.confirm("هل أنت متأكد من رغبتك في حذف هذا السؤال نهائياً؟")) return;
 
@@ -80,9 +79,10 @@ const AdminDashboard: React.FC = () => {
       const { error } = await supabase.from('custom_questions').delete().eq('id', id);
       if (error) throw error;
       
+      // Update local state immediately for instant feedback
+      setAdminQuestions(prev => prev.filter(q => q.id !== id));
       setAdminStatus({ type: 'success', msg: 'تم الحذف بنجاح' });
-      fetchTargetQuestions(); // Refresh isolated question list
-      fetchSidebarData(); // Refresh sidebar in case user had no more questions
+      fetchSidebarData(); 
     } catch (err: any) {
       alert("حدث خطأ أثناء الحذف: " + err.message);
     } finally {
@@ -96,8 +96,11 @@ const AdminDashboard: React.FC = () => {
     return Array.from(new Set([...registeredUsers, ...fromQuestions])).sort();
   }, [allQuestions, registeredUsers]);
 
+  // Handle Question Submission with immediate state update
   const handleSubmit = async (e: React.FormEvent, shouldClear: boolean = false) => {
     if(e) e.preventDefault();
+    if(!adminFormData.question_text) return;
+
     setLoading(true);
     const payload = { 
       question_text: adminFormData.question_text,
@@ -109,14 +112,25 @@ const AdminDashboard: React.FC = () => {
     };
     
     try {
-      const { error } = await supabase.from('custom_questions').insert([payload]);
+      // Use .select() to get the inserted row back immediately
+      const { data: inserted, error } = await supabase
+        .from('custom_questions')
+        .insert([payload])
+        .select();
+
       if (error) throw error;
       
       setAdminStatus({ type: 'success', msg: 'تم الحفظ والمزامنة!' });
+      
+      // Update the question list state immediately
+      if (inserted && inserted.length > 0) {
+        setAdminQuestions(prev => [inserted[0], ...prev]);
+      }
+
       if (shouldClear) {
         setAdminFormData({ question_text: '', option_a: '', option_b: '', option_c: '', correct_option: 'A' });
       }
-      fetchTargetQuestions();
+      
       fetchSidebarData();
     } catch (err: any) {
       setAdminStatus({ type: 'error', msg: 'خطأ: ' + err.message });
