@@ -65,6 +65,7 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
       return Math.min(scaleX, scaleY);
     }
     if (cameraMode === CameraMode.MOBILE) return 0.65;
+    if (dimensions.width < 1024) return 0.75;
     return 1.0; 
   };
 
@@ -611,6 +612,16 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     }
   };
 
+  const handleMobileTouch = (key: string, start: boolean) => {
+    if (start) keysPressed.current.add(key);
+    else keysPressed.current.delete(key);
+  };
+
+  const handleBombPress = () => {
+    fireProjectile();
+    if (navigator.vibrate) navigator.vibrate(50);
+  };
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => { keysPressed.current.add(e.key); if (e.code === 'Space') fireProjectile(); };
     const handleKeyUp = (e: KeyboardEvent) => keysPressed.current.delete(e.key);
@@ -622,6 +633,50 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   return (
     <div ref={containerRef} className="absolute inset-0 w-full h-full flex items-center justify-center overflow-hidden bg-[#050510]">
       <canvas ref={canvasRef} width={dimensions.width} height={dimensions.height} className="w-full h-full block" />
+      
+      {/* Mobile Controls Layer */}
+      {dimensions.width < 1024 && (
+        <div className="absolute inset-0 z-30 pointer-events-none select-none">
+          {/* D-Pad Container */}
+          <div className="absolute bottom-8 left-8 w-44 h-44 flex flex-col items-center justify-center pointer-events-auto">
+            <div className="flex flex-col gap-2">
+              <button 
+                className="w-16 h-16 bg-white/10 border border-white/20 rounded-2xl active:bg-cyan-500/40 backdrop-blur-md flex items-center justify-center text-3xl text-white"
+                onTouchStart={() => handleMobileTouch('ArrowUp', true)}
+                onTouchEnd={() => handleMobileTouch('ArrowUp', false)}
+              >↑</button>
+              <div className="flex gap-2">
+                <button 
+                  className="w-16 h-16 bg-white/10 border border-white/20 rounded-2xl active:bg-cyan-500/40 backdrop-blur-md flex items-center justify-center text-3xl text-white"
+                  onTouchStart={() => handleMobileTouch('ArrowLeft', true)}
+                  onTouchEnd={() => handleMobileTouch('ArrowLeft', false)}
+                >←</button>
+                <div className="w-16 h-16"></div> {/* Center Spacer */}
+                <button 
+                  className="w-16 h-16 bg-white/10 border border-white/20 rounded-2xl active:bg-cyan-500/40 backdrop-blur-md flex items-center justify-center text-3xl text-white"
+                  onTouchStart={() => handleMobileTouch('ArrowRight', true)}
+                  onTouchEnd={() => handleMobileTouch('ArrowRight', false)}
+                >→</button>
+              </div>
+              <button 
+                className="w-16 h-16 bg-white/10 border border-white/20 rounded-2xl active:bg-cyan-500/40 backdrop-blur-md flex items-center justify-center text-3xl text-white"
+                onTouchStart={() => handleMobileTouch('ArrowDown', true)}
+                onTouchEnd={() => handleMobileTouch('ArrowDown', false)}
+              >↓</button>
+            </div>
+          </div>
+
+          {/* Bomb Button */}
+          <div className="absolute bottom-12 right-12 pointer-events-auto">
+            <button 
+              className="w-24 h-24 bg-red-600/30 border-2 border-red-500 rounded-full flex items-center justify-center text-5xl backdrop-blur-lg animate-bomb-pulse active:scale-90 transition-transform"
+              onTouchStart={handleBombPress}
+            >
+              💣
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
