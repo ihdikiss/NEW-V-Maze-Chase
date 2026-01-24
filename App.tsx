@@ -10,13 +10,14 @@ import { supabase } from './lib/supabase';
 /**
  * COMPONENT: AdminDashboard
  * Isolated view for mission control.
- * Task: Fetch, List, and Delete custom questions.
+ * Updated to fix auto-fetch on selection and state isolation.
  */
 const AdminDashboard: React.FC = () => {
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [adminPassInput, setAdminPassInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [allQuestions, setAllQuestions] = useState<any[]>([]);
+  const [adminQuestions, setAdminQuestions] = useState<any[]>([]); // Isolated state for current target
   const [registeredUsers, setRegisteredUsers] = useState<string[]>([]);
   const [activeAdminEmail, setActiveAdminEmail] = useState<string | null>(null);
   const [adminStatus, setAdminStatus] = useState({ type: '', msg: '' });
@@ -28,49 +29,66 @@ const AdminDashboard: React.FC = () => {
     correct_option: 'A'
   });
 
-  // Fetch all data necessary for the dashboard
-  const fetchData = async () => {
-    setLoading(true);
+  // Fetch all users and general question counts for the sidebar
+  const fetchSidebarData = async () => {
     try {
-      const { data: qData } = await supabase
-        .from('custom_questions')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const { data: qData } = await supabase.from('custom_questions').select('assigned_to_email');
       if (qData) setAllQuestions(qData);
-
-      const { data: pData } = await supabase
-        .from('profiles')
-        .select('email');
+      const { data: pData } = await supabase.from('profiles').select('email');
       if (pData) setRegisteredUsers(pData.map(p => p.email).filter(e => e));
-    } catch (err) { 
-      console.error("Admin Fetch Error:", err); 
-    }
-    setLoading(false);
+    } catch (err) { console.error("Admin Sidebar Fetch Error:", err); }
   };
 
+  // Fetch questions for the currently active email selection
+  const fetchTargetQuestions = async () => {
+    setLoading(true);
+    try {
+      const cleanEmail = activeAdminEmail ? activeAdminEmail.trim().toLowerCase() : null;
+      let query = supabase.from('custom_questions').select('*').order('created_at', { ascending: false });
+      
+      if (cleanEmail) {
+        query = query.ilike('assigned_to_email', cleanEmail);
+      } else {
+        query = query.is('assigned_to_email', null);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      setAdminQuestions(data || []);
+    } catch (err) { 
+      console.error("Target Questions Fetch Error:", err); 
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Initial fetch for sidebar
   useEffect(() => { 
-    if (isAdminLoggedIn) fetchData(); 
+    if (isAdminLoggedIn) fetchSidebarData(); 
   }, [isAdminLoggedIn]);
 
-  // Handle Question Deletion with confirmation
+  // Auto-fetch questions whenever the active email selection changes
+  useEffect(() => {
+    if (isAdminLoggedIn) fetchTargetQuestions();
+  }, [activeAdminEmail, isAdminLoggedIn]);
+
   const handleDeleteQuestion = async (id: number) => {
-    const isConfirmed = window.confirm("هل أنت متأكد من رغبتك في حذف هذا السؤال نهائياً؟");
-    if (!isConfirmed) return;
+    if (!window.confirm("هل أنت متأكد من رغبتك في حذف هذا السؤال نهائياً؟")) return;
 
     setLoading(true);
-    const { error } = await supabase
-      .from('custom_questions')
-      .delete()
-      .eq('id', id);
-
-    if (error) {
-      alert("حدث خطأ أثناء الحذف: " + error.message);
-    } else {
+    try {
+      const { error } = await supabase.from('custom_questions').delete().eq('id', id);
+      if (error) throw error;
+      
       setAdminStatus({ type: 'success', msg: 'تم الحذف بنجاح' });
-      fetchData(); // Refresh the list
+      fetchTargetQuestions(); // Refresh isolated question list
+      fetchSidebarData(); // Refresh sidebar in case user had no more questions
+    } catch (err: any) {
+      alert("حدث خطأ أثناء الحذف: " + err.message);
+    } finally {
+      setLoading(false);
       setTimeout(() => setAdminStatus({ type: '', msg: '' }), 2000);
     }
-    setLoading(false);
   };
 
   const userList = useMemo(() => {
@@ -89,18 +107,23 @@ const AdminDashboard: React.FC = () => {
       correct_option: adminFormData.correct_option,
       assigned_to_email: activeAdminEmail ? activeAdminEmail.trim().toLowerCase() : null
     };
-    const { error } = await supabase.from('custom_questions').insert([payload]);
-    if (error) {
-      setAdminStatus({ type: 'error', msg: 'خطأ: ' + error.message });
-    } else {
+    
+    try {
+      const { error } = await supabase.from('custom_questions').insert([payload]);
+      if (error) throw error;
+      
       setAdminStatus({ type: 'success', msg: 'تم الحفظ والمزامنة!' });
       if (shouldClear) {
         setAdminFormData({ question_text: '', option_a: '', option_b: '', option_c: '', correct_option: 'A' });
       }
-      fetchData();
+      fetchTargetQuestions();
+      fetchSidebarData();
+    } catch (err: any) {
+      setAdminStatus({ type: 'error', msg: 'خطأ: ' + err.message });
+    } finally {
+      setLoading(false);
+      setTimeout(() => setAdminStatus({ type: '', msg: '' }), 3000);
     }
-    setLoading(false);
-    setTimeout(() => setAdminStatus({ type: '', msg: '' }), 3000);
   };
 
   if (!isAdminLoggedIn) {
@@ -135,7 +158,7 @@ const AdminDashboard: React.FC = () => {
             <p className="text-cyan-400 text-xs font-bold tracking-widest uppercase">Admin Management Dashboard</p>
           </div>
           <div className="flex gap-4">
-            <button onClick={fetchData} className="px-6 py-2 bg-white/5 border border-white/10 rounded-full text-xs font-black">REFRESH</button>
+            <button onClick={() => { fetchSidebarData(); fetchTargetQuestions(); }} className="px-6 py-2 bg-white/5 border border-white/10 rounded-full text-xs font-black hover:bg-white/10">REFRESH</button>
             <button onClick={() => window.location.hash = ''} className="px-8 py-3 bg-red-500/10 text-red-500 border border-red-500/30 rounded-full font-black">EXIT</button>
           </div>
         </header>
@@ -183,41 +206,33 @@ const AdminDashboard: React.FC = () => {
               </form>
             </section>
 
-            {/* Question Management List Section */}
             <section className="bg-white/5 p-10 rounded-[2.5rem] border border-white/10">
               <h3 className="orbitron text-center text-gray-500 mb-8 font-black uppercase">إدارة الأسئلة النشطة</h3>
               <div className="space-y-4">
-                {allQuestions.filter(q => {
-                  const targetEmail = activeAdminEmail ? activeAdminEmail.trim().toLowerCase() : null;
-                  const questionEmail = q.assigned_to_email ? q.assigned_to_email.trim().toLowerCase() : null;
-                  return questionEmail === targetEmail;
-                }).map(q => (
-                  <div key={q.id} className="bg-black/40 p-6 rounded-[2rem] flex justify-between items-center border border-white/5 hover:border-cyan-500/30 transition-all duration-300">
-                    <div className="flex-1 text-right">
-                      <p className="font-bold text-lg text-white mb-4">{q.question_text}</p>
-                      <div className="flex flex-wrap gap-3 justify-end">
-                        {['A','B','C'].map(k => (
-                          <div key={k} className={`px-4 py-2 rounded-xl text-[10px] font-bold border ${q.correct_option === k ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.2)]' : 'bg-black/30 border-white/5 text-gray-500'}`}>
-                            {k}: {q['option_'+k.toLowerCase()]}
-                          </div>
-                        ))}
+                {adminQuestions.length > 0 ? (
+                  adminQuestions.map(q => (
+                    <div key={q.id} className="bg-black/40 p-6 rounded-[2rem] flex justify-between items-center border border-white/5 hover:border-cyan-500/30 transition-all duration-300">
+                      <div className="flex-1 text-right">
+                        <p className="font-bold text-lg text-white mb-4">{q.question_text}</p>
+                        <div className="flex flex-wrap gap-3 justify-end">
+                          {['A','B','C'].map(k => (
+                            <div key={k} className={`px-4 py-2 rounded-xl text-[10px] font-bold border ${q.correct_option === k ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.2)]' : 'bg-black/30 border-white/5 text-gray-500'}`}>
+                              {k}: {q['option_'+k.toLowerCase()]}
+                            </div>
+                          ))}
+                        </div>
                       </div>
+                      <button 
+                        onClick={() => handleDeleteQuestion(q.id)} 
+                        className="mr-6 px-6 py-4 bg-red-500/10 text-red-500 border border-red-500/20 rounded-2xl hover:bg-red-500 hover:text-white transition-all font-black text-xs orbitron"
+                      >
+                        DELETE
+                      </button>
                     </div>
-                    <button 
-                      onClick={() => handleDeleteQuestion(q.id)} 
-                      className="mr-6 px-6 py-4 bg-red-500/10 text-red-500 border border-red-500/20 rounded-2xl hover:bg-red-500 hover:text-white transition-all font-black text-xs orbitron"
-                    >
-                      DELETE
-                    </button>
-                  </div>
-                ))}
-                {allQuestions.filter(q => {
-                  const targetEmail = activeAdminEmail ? activeAdminEmail.trim().toLowerCase() : null;
-                  const questionEmail = q.assigned_to_email ? q.assigned_to_email.trim().toLowerCase() : null;
-                  return questionEmail === targetEmail;
-                }).length === 0 && (
+                  ))
+                ) : (
                   <div className="py-16 text-center text-gray-600 font-bold border-2 border-dashed border-white/5 rounded-[2.5rem]">
-                    لا توجد أسئلة مضافة لهذا القطاع حالياً.
+                    {loading ? 'جاري جلب البيانات...' : 'لا توجد أسئلة مضافة لهذا القطاع حالياً.'}
                   </div>
                 )}
               </div>
@@ -231,6 +246,7 @@ const AdminDashboard: React.FC = () => {
 
 /**
  * MAIN COMPONENT: App
+ * Handles game state, auth, and routing to admin.
  */
 const App: React.FC = () => {
   const [isAdminRoute, setIsAdminRoute] = useState(window.location.hash === '#admin');
@@ -275,10 +291,6 @@ const App: React.FC = () => {
     setActiveLevels(mapped);
   };
 
-  /**
-   * DATA FETCHING LOGIC
-   * Synchronizes custom questions based on user identity.
-   */
   const syncQuestions = async (target: string | null) => {
     try {
       const cleanEmail = target?.trim().toLowerCase() || null;
