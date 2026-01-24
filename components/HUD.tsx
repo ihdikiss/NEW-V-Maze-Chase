@@ -1,5 +1,6 @@
 
 import React from 'react';
+import { CameraMode } from '../types';
 
 interface HUDProps {
   score: number;
@@ -9,6 +10,8 @@ interface HUDProps {
   ammo?: number;
   onToggleSettings?: () => void;
   isSettingsOpen?: boolean;
+  cameraMode?: CameraMode;
+  onCameraModeChange?: (mode: CameraMode) => void;
 }
 
 const HeartIcon: React.FC<{ filled: boolean }> = ({ filled }) => (
@@ -30,10 +33,10 @@ const CameraIcon: React.FC = () => (
   </svg>
 );
 
-const HUD: React.FC<HUDProps> = ({ score, lives, level, question, ammo = 0, onToggleSettings, isSettingsOpen }) => {
+const HUD: React.FC<HUDProps> = ({ score, lives, level, question, ammo = 0, onToggleSettings, isSettingsOpen, cameraMode, onCameraModeChange }) => {
   return (
     <div className="w-full flex flex-col gap-4 z-20 pointer-events-none p-4 md:p-6">
-      {/* Upper Status Bar - Added pointer-events-auto here to enable clicking on child buttons */}
+      {/* Upper Status Bar */}
       <div className="flex justify-between items-center px-8 py-3 bg-black/60 border border-white/10 rounded-2xl backdrop-blur-md shadow-[0_0_30px_rgba(0,0,0,0.5)] pointer-events-auto">
         
         {/* Left Section: Sector, Camera Settings, Weapon */}
@@ -43,8 +46,8 @@ const HUD: React.FC<HUDProps> = ({ score, lives, level, question, ammo = 0, onTo
             <span className="text-white text-2xl font-black font-['Orbitron']">PROTOCOL-0{level}</span>
           </div>
 
-          {/* Camera Settings Button */}
-          <div className="flex items-center">
+          {/* Camera Settings Button & Dropdown */}
+          <div className="relative flex items-center">
             <button 
               onClick={onToggleSettings}
               className={`p-2 rounded-xl border transition-all duration-300 flex flex-col items-center gap-0.5
@@ -56,6 +59,37 @@ const HUD: React.FC<HUDProps> = ({ score, lives, level, question, ammo = 0, onTo
               <CameraIcon />
               <span className="text-[7px] font-black uppercase tracking-widest">Vision</span>
             </button>
+
+            {/* CAMERA VISION MENU */}
+            {isSettingsOpen && (
+              <div className="absolute top-16 left-0 w-48 bg-[#0a0a20]/95 border border-cyan-500/30 rounded-2xl p-2 backdrop-blur-xl shadow-[0_0_40px_rgba(0,0,0,0.8)] z-[10001] animate-fade-in overflow-hidden">
+                <div className="text-[8px] text-cyan-400 font-black tracking-widest uppercase mb-2 px-2 py-1 border-b border-white/5">Select Feed</div>
+                
+                <button 
+                  onClick={() => onCameraModeChange?.(CameraMode.CHASE)}
+                  className={`w-full text-right p-3 rounded-xl flex items-center justify-between text-[10px] font-bold transition-all hover:bg-white/5 mb-1 ${cameraMode === CameraMode.CHASE ? 'bg-cyan-500/20 text-cyan-400' : 'text-gray-400'}`}
+                >
+                  FOLLOW CAM (CHASE)
+                  {cameraMode === CameraMode.CHASE && <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-pulse" />}
+                </button>
+
+                <button 
+                  onClick={() => onCameraModeChange?.(CameraMode.FIELD)}
+                  className={`w-full text-right p-3 rounded-xl flex items-center justify-between text-[10px] font-bold transition-all hover:bg-white/5 mb-1 ${cameraMode === CameraMode.FIELD ? 'bg-cyan-500/20 text-cyan-400' : 'text-gray-400'}`}
+                >
+                  BIRD'S EYE (FIELD)
+                  {cameraMode === CameraMode.FIELD && <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-pulse" />}
+                </button>
+
+                <button 
+                  onClick={() => onCameraModeChange?.(CameraMode.MOBILE)}
+                  className={`w-full text-right p-3 rounded-xl flex items-center justify-between text-[10px] font-bold transition-all hover:bg-white/5 ${cameraMode === CameraMode.MOBILE ? 'bg-cyan-500/20 text-cyan-400' : 'text-gray-400'}`}
+                >
+                  TOP VIEW (MOBILE)
+                  {cameraMode === CameraMode.MOBILE && <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-pulse" />}
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col">

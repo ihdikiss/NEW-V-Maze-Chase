@@ -213,6 +213,7 @@ const App: React.FC = () => {
   const [ammo, setAmmo] = useState(0);
   const [lastFeedback, setLastFeedback] = useState<{ type: 'success' | 'fail', message: string } | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [cameraMode, setCameraMode] = useState<CameraMode>(CameraMode.CHASE);
 
   // --- NEW MISSION TRANSITION STATE ---
   const [correctAnswersCount, setCorrectAnswersCount] = useState(0);
@@ -342,7 +343,17 @@ const App: React.FC = () => {
       {gameState === GameState.BRIEFING && <MissionBriefing level={levelIndex + 1} question={activeLevels[levelIndex].question} onEngage={() => setGameState(GameState.PLAYING)} />}
       {gameState === GameState.PLAYING && (
         <div className="relative w-full h-full flex flex-col z-10 pointer-events-auto">
-          <HUD score={score} lives={lives} level={levelIndex + 1} question={activeLevels[levelIndex].question} ammo={ammo} onToggleSettings={() => setIsSettingsOpen(!isSettingsOpen)} isSettingsOpen={isSettingsOpen} />
+          <HUD 
+            score={score} 
+            lives={lives} 
+            level={levelIndex + 1} 
+            question={activeLevels[levelIndex].question} 
+            ammo={ammo} 
+            onToggleSettings={() => setIsSettingsOpen(!isSettingsOpen)} 
+            isSettingsOpen={isSettingsOpen} 
+            cameraMode={cameraMode}
+            onCameraModeChange={(mode) => { setCameraMode(mode); setIsSettingsOpen(false); }}
+          />
           <div className="flex-1 w-full relative">
             <GameView 
               levelData={activeLevels[levelIndex]} 
@@ -377,7 +388,7 @@ const App: React.FC = () => {
               onIncorrect={() => { setLastFeedback({ type: 'fail', message: 'WRONG SECTOR' }); setTimeout(() => setLastFeedback(null), 1500); }} 
               onEnemyHit={() => { setLives(l => { const next = l - 1; if (next <= 0) { setGameState(GameState.GAME_OVER); return 0; } return next; }); setLastFeedback({ type: 'fail', message: 'INTEGRITY FAIL' }); setTimeout(() => setLastFeedback(null), 1500); }} 
               onAmmoChange={setAmmo} 
-              cameraMode={CameraMode.CHASE} 
+              cameraMode={cameraMode} 
             />
           </div>
           {lastFeedback && (
