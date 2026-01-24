@@ -41,6 +41,9 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     vx: 0, vy: 0 
   });
   
+  // PERSISTENT MOVEMENT REF: Stores the last active direction vector
+  const currentMoveVec = useRef({ x: 0, y: 0 });
+
   const cameraRef = useRef({ x: 0, y: 0 });
   const enemiesRef = useRef<any[]>([]);
   const powerUpsRef = useRef<any[]>([]);
@@ -107,6 +110,9 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     playerRef.current.respawnGrace = 3.0; 
     playerRef.current.currentAngle = 0;
     playerRef.current.moveIntensity = 0;
+
+    // Reset Persistent Movement on level start
+    currentMoveVec.current = { x: 0, y: 0 };
     
     setShowSafeMsg(true);
     setTimeout(() => setShowSafeMsg(false), 2000);
@@ -218,24 +224,31 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
 
     const p = playerRef.current;
     if (!p.isDead) {
-      let inputX = 0, inputY = 0;
-      if (keysPressed.current.has('ArrowLeft') || keysPressed.current.has('a')) inputX -= 1;
-      if (keysPressed.current.has('ArrowRight') || keysPressed.current.has('d')) inputX += 1;
-      if (keysPressed.current.has('ArrowUp') || keysPressed.current.has('w')) inputY -= 1;
-      if (keysPressed.current.has('ArrowDown') || keysPressed.current.has('s')) inputY += 1;
+      // Use persistent movement vector instead of raw keys state
+      let inputX = currentMoveVec.current.x;
+      let inputY = currentMoveVec.current.y;
 
       if (inputX !== 0 || inputY !== 0) {
         const mag = Math.hypot(inputX, inputY);
         const dx = (inputX / mag) * PLAYER_SPEED;
         const dy = (inputY / mag) * PLAYER_SPEED;
         p.vx = dx; p.vy = dy;
-        if (!checkCollision(p.x + dx, p.y)) p.x += dx;
-        if (!checkCollision(p.x, p.y + dy)) p.y += dy;
-        if (Math.abs(dx) > Math.abs(dy)) p.dir = dx > 0 ? 'right' : 'left';
-        else p.dir = dy > 0 ? 'down' : 'up';
-        const targetAngle = Math.atan2(dy, dx) + Math.PI / 2;
-        p.currentAngle = lerpAngle(p.currentAngle, targetAngle, 0.15);
-        p.moveIntensity = Math.min(p.moveIntensity + 0.1, 1);
+        
+        // Sliding logic: if blocked in one axis, allow movement in the other
+        let moved = false;
+        if (!checkCollision(p.x + dx, p.y)) { p.x += dx; moved = true; }
+        if (!checkCollision(p.x, p.y + dy)) { p.y += dy; moved = true; }
+        
+        if (moved) {
+          if (Math.abs(dx) > Math.abs(dy)) p.dir = dx > 0 ? 'right' : 'left';
+          else p.dir = dy > 0 ? 'down' : 'up';
+          const targetAngle = Math.atan2(dy, dx) + Math.PI / 2;
+          p.currentAngle = lerpAngle(p.currentAngle, targetAngle, 0.15);
+          p.moveIntensity = Math.min(p.moveIntensity + 0.1, 1);
+        } else {
+          // If totally blocked, stop animation intensity
+          p.moveIntensity = Math.max(p.moveIntensity - 0.1, 0);
+        }
       } else {
         p.vx = 0; p.vy = 0;
         p.moveIntensity = Math.max(p.moveIntensity - 0.1, 0);
@@ -604,8 +617,13 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   };
 
   const handleMobileTouch = (key: string, start: boolean) => {
-    if (start) keysPressed.current.add(key);
-    else keysPressed.current.delete(key);
+    // Only update movement vector on touch start to enable persistent movement
+    if (!start) return;
+    
+    if (key === 'ArrowUp') currentMoveVec.current = { x: 0, y: -1 };
+    else if (key === 'ArrowDown') currentMoveVec.current = { x: 0, y: 1 };
+    else if (key === 'ArrowLeft') currentMoveVec.current = { x: -1, y: 0 };
+    else if (key === 'ArrowRight') currentMoveVec.current = { x: 1, y: 0 };
   };
 
   const handleBombPress = () => {
@@ -614,11 +632,19 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   };
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => { keysPressed.current.add(e.key); if (e.code === 'Space') fireProjectile(); };
-    const handleKeyUp = (e: KeyboardEvent) => keysPressed.current.delete(e.key);
-    window.addEventListener('keydown', handleKeyDown); window.addEventListener('keyup', handleKeyUp);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Directional keys set the persistent movement vector
+      if (['ArrowUp', 'w'].includes(e.key)) currentMoveVec.current = { x: 0, y: -1 };
+      else if (['ArrowDown', 's'].includes(e.key)) currentMoveVec.current = { x: 0, y: 1 };
+      else if (['ArrowLeft', 'a'].includes(e.key)) currentMoveVec.current = { x: -1, y: 0 };
+      else if (['ArrowRight', 'd'].includes(e.key)) currentMoveVec.current = { x: 1, y: 0 };
+      
+      if (e.code === 'Space') fireProjectile();
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
     rafRef.current = requestAnimationFrame(update);
-    return () => { window.removeEventListener('keydown', handleKeyDown); window.removeEventListener('keyup', handleKeyUp); cancelAnimationFrame(rafRef.current); };
+    return () => { window.removeEventListener('keydown', handleKeyDown); cancelAnimationFrame(rafRef.current); };
   }, [update]);
 
   return (
@@ -639,7 +665,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
               <button 
                 className="absolute top-1 w-12 h-12 flex items-center justify-center active:scale-95 transition-transform"
                 onTouchStart={() => handleMobileTouch('ArrowUp', true)}
-                onTouchEnd={() => handleMobileTouch('ArrowUp', false)}
               >
                 <div className="w-8 h-8 rounded-lg border border-white/20 flex items-center justify-center bg-white/5 active:bg-white/20"><span className="text-white text-base">▲</span></div>
               </button>
@@ -647,7 +672,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
               <button 
                 className="absolute bottom-1 w-12 h-12 flex items-center justify-center active:scale-95 transition-transform"
                 onTouchStart={() => handleMobileTouch('ArrowDown', true)}
-                onTouchEnd={() => handleMobileTouch('ArrowDown', false)}
               >
                 <div className="w-8 h-8 rounded-lg border border-white/20 flex items-center justify-center bg-white/5 active:bg-white/20"><span className="text-white text-base">▼</span></div>
               </button>
@@ -655,7 +679,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
               <button 
                 className="absolute left-1 w-12 h-12 flex items-center justify-center active:scale-95 transition-transform"
                 onTouchStart={() => handleMobileTouch('ArrowLeft', true)}
-                onTouchEnd={() => handleMobileTouch('ArrowLeft', false)}
               >
                 <div className="w-8 h-8 rounded-lg border border-white/20 flex items-center justify-center bg-white/5 active:bg-white/20"><span className="text-white text-base">◀</span></div>
               </button>
@@ -663,7 +686,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
               <button 
                 className="absolute right-1 w-12 h-12 flex items-center justify-center active:scale-95 transition-transform"
                 onTouchStart={() => handleMobileTouch('ArrowRight', true)}
-                onTouchEnd={() => handleMobileTouch('ArrowRight', false)}
               >
                 <div className="w-8 h-8 rounded-lg border border-white/20 flex items-center justify-center bg-white/5 active:bg-white/20"><span className="text-white text-base">▶</span></div>
               </button>
