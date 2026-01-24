@@ -10,7 +10,7 @@ import { supabase } from './lib/supabase';
 /**
  * COMPONENT: AdminDashboard
  * Isolated view for mission control.
- * Optimized for immediate UI updates and state isolation.
+ * Fixed: Strict email filtering and state resetting on target change.
  */
 const AdminDashboard: React.FC = () => {
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
@@ -29,7 +29,7 @@ const AdminDashboard: React.FC = () => {
     correct_option: 'A'
   });
 
-  // Fetch all users and general question counts for the sidebar display
+  // Fetch all users and summary data for the sidebar
   const fetchSidebarData = async () => {
     try {
       const { data: qData } = await supabase.from('custom_questions').select('assigned_to_email');
@@ -39,15 +39,19 @@ const AdminDashboard: React.FC = () => {
     } catch (err) { console.error("Admin Sidebar Fetch Error:", err); }
   };
 
-  // Fetch questions for the currently active target (email or null)
+  // Fetch questions for the currently active target with strict equality
   const fetchTargetQuestions = useCallback(async () => {
     setLoading(true);
+    // CRITICAL: Clear current list before fetching new ones to prevent data overlap
+    setAdminQuestions([]); 
+    
     try {
       const cleanEmail = activeAdminEmail ? activeAdminEmail.trim().toLowerCase() : null;
       let query = supabase.from('custom_questions').select('*').order('created_at', { ascending: false });
       
       if (cleanEmail) {
-        query = query.ilike('assigned_to_email', cleanEmail);
+        // Use .eq for strict matching instead of .ilike
+        query = query.eq('assigned_to_email', cleanEmail);
       } else {
         query = query.is('assigned_to_email', null);
       }
@@ -62,15 +66,20 @@ const AdminDashboard: React.FC = () => {
     }
   }, [activeAdminEmail]);
 
-  // Handle Dashboard Login initialization
+  // Handle Login Initializing
   useEffect(() => { 
     if (isAdminLoggedIn) {
       fetchSidebarData();
+    }
+  }, [isAdminLoggedIn]);
+
+  // Auto-fetch and isolation on target change
+  useEffect(() => {
+    if (isAdminLoggedIn) {
       fetchTargetQuestions();
     }
-  }, [isAdminLoggedIn, fetchTargetQuestions]);
+  }, [activeAdminEmail, isAdminLoggedIn, fetchTargetQuestions]);
 
-  // Handle Question Deletion with immediate state update
   const handleDeleteQuestion = async (id: number) => {
     if (!window.confirm("هل أنت متأكد من رغبتك في حذف هذا السؤال نهائياً؟")) return;
 
@@ -79,7 +88,6 @@ const AdminDashboard: React.FC = () => {
       const { error } = await supabase.from('custom_questions').delete().eq('id', id);
       if (error) throw error;
       
-      // Update local state immediately for instant feedback
       setAdminQuestions(prev => prev.filter(q => q.id !== id));
       setAdminStatus({ type: 'success', msg: 'تم الحذف بنجاح' });
       fetchSidebarData(); 
@@ -96,23 +104,22 @@ const AdminDashboard: React.FC = () => {
     return Array.from(new Set([...registeredUsers, ...fromQuestions])).sort();
   }, [allQuestions, registeredUsers]);
 
-  // Handle Question Submission with immediate state update
   const handleSubmit = async (e: React.FormEvent, shouldClear: boolean = false) => {
     if(e) e.preventDefault();
     if(!adminFormData.question_text) return;
 
     setLoading(true);
+    const targetEmail = activeAdminEmail ? activeAdminEmail.trim().toLowerCase() : null;
     const payload = { 
       question_text: adminFormData.question_text,
       option_a: adminFormData.option_a,
       option_b: adminFormData.option_b,
       option_c: adminFormData.option_c,
       correct_option: adminFormData.correct_option,
-      assigned_to_email: activeAdminEmail ? activeAdminEmail.trim().toLowerCase() : null
+      assigned_to_email: targetEmail
     };
     
     try {
-      // Use .select() to get the inserted row back immediately
       const { data: inserted, error } = await supabase
         .from('custom_questions')
         .insert([payload])
@@ -122,9 +129,13 @@ const AdminDashboard: React.FC = () => {
       
       setAdminStatus({ type: 'success', msg: 'تم الحفظ والمزامنة!' });
       
-      // Update the question list state immediately
+      // Update the list only if it's still the active user
       if (inserted && inserted.length > 0) {
-        setAdminQuestions(prev => [inserted[0], ...prev]);
+        const q = inserted[0];
+        const qEmail = q.assigned_to_email ? q.assigned_to_email.toLowerCase() : null;
+        if (qEmail === targetEmail) {
+          setAdminQuestions(prev => [q, ...prev]);
+        }
       }
 
       if (shouldClear) {
@@ -312,7 +323,7 @@ const App: React.FC = () => {
         const { data: userQuestions, error: userError } = await supabase
           .from('custom_questions')
           .select('*')
-          .ilike('assigned_to_email', cleanEmail);
+          .eq('assigned_to_email', cleanEmail);
         
         if (!userError && userQuestions && userQuestions.length > 0) { 
           mapQuestionsToLevels(userQuestions); 
