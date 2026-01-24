@@ -3,6 +3,7 @@ import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import GameView from './components/GameView';
 import HUD from './components/HUD';
 import MissionBriefing from './components/MissionBriefing';
+import MissionTransition from './components/MissionTransition';
 import { GameState, CameraMode } from './types';
 import { LEVELS as HARDCODED_LEVELS } from './constants';
 import { supabase } from './lib/supabase';
@@ -10,7 +11,6 @@ import { supabase } from './lib/supabase';
 /**
  * COMPONENT: AdminDashboard
  * Isolated view for mission control.
- * Fixed: Strict email filtering and state resetting on target change.
  */
 const AdminDashboard: React.FC = () => {
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
@@ -29,7 +29,6 @@ const AdminDashboard: React.FC = () => {
     correct_option: 'A'
   });
 
-  // Fetch all users and summary data for the sidebar
   const fetchSidebarData = async () => {
     try {
       const { data: qData } = await supabase.from('custom_questions').select('assigned_to_email');
@@ -39,64 +38,35 @@ const AdminDashboard: React.FC = () => {
     } catch (err) { console.error("Admin Sidebar Fetch Error:", err); }
   };
 
-  // Fetch questions for the currently active target with strict equality
   const fetchTargetQuestions = useCallback(async () => {
     setLoading(true);
-    // CRITICAL: Clear current list before fetching new ones to prevent data overlap
     setAdminQuestions([]); 
-    
     try {
       const cleanEmail = activeAdminEmail ? activeAdminEmail.trim().toLowerCase() : null;
       let query = supabase.from('custom_questions').select('*').order('created_at', { ascending: false });
-      
-      if (cleanEmail) {
-        // Use .eq for strict matching instead of .ilike
-        query = query.eq('assigned_to_email', cleanEmail);
-      } else {
-        query = query.is('assigned_to_email', null);
-      }
-
+      if (cleanEmail) query = query.eq('assigned_to_email', cleanEmail);
+      else query = query.is('assigned_to_email', null);
       const { data, error } = await query;
       if (error) throw error;
       setAdminQuestions(data || []);
-    } catch (err) { 
-      console.error("Target Questions Fetch Error:", err); 
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) { console.error("Target Questions Fetch Error:", err); }
+    finally { setLoading(false); }
   }, [activeAdminEmail]);
 
-  // Handle Login Initializing
-  useEffect(() => { 
-    if (isAdminLoggedIn) {
-      fetchSidebarData();
-    }
-  }, [isAdminLoggedIn]);
-
-  // Auto-fetch and isolation on target change
-  useEffect(() => {
-    if (isAdminLoggedIn) {
-      fetchTargetQuestions();
-    }
-  }, [activeAdminEmail, isAdminLoggedIn, fetchTargetQuestions]);
+  useEffect(() => { if (isAdminLoggedIn) fetchSidebarData(); }, [isAdminLoggedIn]);
+  useEffect(() => { if (isAdminLoggedIn) fetchTargetQuestions(); }, [activeAdminEmail, isAdminLoggedIn, fetchTargetQuestions]);
 
   const handleDeleteQuestion = async (id: number) => {
     if (!window.confirm("هل أنت متأكد من رغبتك في حذف هذا السؤال نهائياً؟")) return;
-
     setLoading(true);
     try {
       const { error } = await supabase.from('custom_questions').delete().eq('id', id);
       if (error) throw error;
-      
       setAdminQuestions(prev => prev.filter(q => q.id !== id));
       setAdminStatus({ type: 'success', msg: 'تم الحذف بنجاح' });
       fetchSidebarData(); 
-    } catch (err: any) {
-      alert("حدث خطأ أثناء الحذف: " + err.message);
-    } finally {
-      setLoading(false);
-      setTimeout(() => setAdminStatus({ type: '', msg: '' }), 2000);
-    }
+    } catch (err: any) { alert("حدث خطأ أثناء الحذف: " + err.message); }
+    finally { setLoading(false); setTimeout(() => setAdminStatus({ type: '', msg: '' }), 2000); }
   };
 
   const userList = useMemo(() => {
@@ -107,48 +77,23 @@ const AdminDashboard: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent, shouldClear: boolean = false) => {
     if(e) e.preventDefault();
     if(!adminFormData.question_text) return;
-
     setLoading(true);
     const targetEmail = activeAdminEmail ? activeAdminEmail.trim().toLowerCase() : null;
-    const payload = { 
-      question_text: adminFormData.question_text,
-      option_a: adminFormData.option_a,
-      option_b: adminFormData.option_b,
-      option_c: adminFormData.option_c,
-      correct_option: adminFormData.correct_option,
-      assigned_to_email: targetEmail
-    };
-    
     try {
-      const { data: inserted, error } = await supabase
-        .from('custom_questions')
-        .insert([payload])
-        .select();
-
+      const { data: inserted, error } = await supabase.from('custom_questions').insert([{ 
+        ...adminFormData, assigned_to_email: targetEmail 
+      }]).select();
       if (error) throw error;
-      
       setAdminStatus({ type: 'success', msg: 'تم الحفظ والمزامنة!' });
-      
-      // Update the list only if it's still the active user
       if (inserted && inserted.length > 0) {
         const q = inserted[0];
         const qEmail = q.assigned_to_email ? q.assigned_to_email.toLowerCase() : null;
-        if (qEmail === targetEmail) {
-          setAdminQuestions(prev => [q, ...prev]);
-        }
+        if (qEmail === targetEmail) setAdminQuestions(prev => [q, ...prev]);
       }
-
-      if (shouldClear) {
-        setAdminFormData({ question_text: '', option_a: '', option_b: '', option_c: '', correct_option: 'A' });
-      }
-      
+      if (shouldClear) setAdminFormData({ question_text: '', option_a: '', option_b: '', option_c: '', correct_option: 'A' });
       fetchSidebarData();
-    } catch (err: any) {
-      setAdminStatus({ type: 'error', msg: 'خطأ: ' + err.message });
-    } finally {
-      setLoading(false);
-      setTimeout(() => setAdminStatus({ type: '', msg: '' }), 3000);
-    }
+    } catch (err: any) { setAdminStatus({ type: 'error', msg: 'خطأ: ' + err.message }); }
+    finally { setLoading(false); setTimeout(() => setAdminStatus({ type: '', msg: '' }), 3000); }
   };
 
   if (!isAdminLoggedIn) {
@@ -156,19 +101,8 @@ const AdminDashboard: React.FC = () => {
       <div className="fixed inset-0 z-[200] bg-[#050510] flex items-center justify-center p-6" dir="rtl">
         <div className="bg-[#0a0a20] border border-cyan-500/30 p-12 rounded-[3rem] text-center w-full max-w-md shadow-2xl">
           <h2 className="text-3xl font-black text-white mb-8 orbitron">SECURE ACCESS</h2>
-          <input 
-            type="password" 
-            placeholder="ACCESS KEY" 
-            value={adminPassInput} 
-            onChange={e => setAdminPassInput(e.target.value)} 
-            className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl text-center text-xl outline-none focus:border-cyan-500 mb-6 text-white" 
-          />
-          <button 
-            onClick={() => { if(adminPassInput === 'ADMIN_9RA_2025') setIsAdminLoggedIn(true); }}
-            className="w-full py-5 bg-cyan-600 rounded-2xl font-black orbitron"
-          >
-            INITIATE LINK
-          </button>
+          <input type="password" placeholder="ACCESS KEY" value={adminPassInput} onChange={e => setAdminPassInput(e.target.value)} className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl text-center text-xl outline-none focus:border-cyan-500 mb-6 text-white" />
+          <button onClick={() => { if(adminPassInput === 'ADMIN_9RA_2025') setIsAdminLoggedIn(true); }} className="w-full py-5 bg-cyan-600 rounded-2xl font-black orbitron">INITIATE LINK</button>
         </div>
       </div>
     );
@@ -187,7 +121,6 @@ const AdminDashboard: React.FC = () => {
             <button onClick={() => window.location.hash = ''} className="px-8 py-3 bg-red-500/10 text-red-500 border border-red-500/30 rounded-full font-black">EXIT</button>
           </div>
         </header>
-
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <aside className="lg:col-span-3 bg-white/5 p-6 rounded-[2rem] border border-white/10">
             <h3 className="orbitron text-[10px] text-cyan-400 mb-6 tracking-widest font-black uppercase">Users & Targets</h3>
@@ -198,7 +131,6 @@ const AdminDashboard: React.FC = () => {
               ))}
             </div>
           </aside>
-
           <main className="lg:col-span-9 space-y-8">
             <section className="bg-white/5 p-10 rounded-[2.5rem] border border-white/10">
               <h2 className="text-2xl font-black mb-8">إضافة سؤال لـ: <span className="text-cyan-400">{activeAdminEmail || 'القطاع العام'}</span></h2>
@@ -230,7 +162,6 @@ const AdminDashboard: React.FC = () => {
                 </div>
               </form>
             </section>
-
             <section className="bg-white/5 p-10 rounded-[2.5rem] border border-white/10">
               <h3 className="orbitron text-center text-gray-500 mb-8 font-black uppercase">إدارة الأسئلة النشطة</h3>
               <div className="space-y-4">
@@ -241,24 +172,15 @@ const AdminDashboard: React.FC = () => {
                         <p className="font-bold text-lg text-white mb-4">{q.question_text}</p>
                         <div className="flex flex-wrap gap-3 justify-end">
                           {['A','B','C'].map(k => (
-                            <div key={k} className={`px-4 py-2 rounded-xl text-[10px] font-bold border ${q.correct_option === k ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.2)]' : 'bg-black/30 border-white/5 text-gray-500'}`}>
-                              {k}: {q['option_'+k.toLowerCase()]}
-                            </div>
+                            <div key={k} className={`px-4 py-2 rounded-xl text-[10px] font-bold border ${q.correct_option === k ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.2)]' : 'bg-black/30 border-white/5 text-gray-500'}`}>{k}: {q['option_'+k.toLowerCase()]}</div>
                           ))}
                         </div>
                       </div>
-                      <button 
-                        onClick={() => handleDeleteQuestion(q.id)} 
-                        className="mr-6 px-6 py-4 bg-red-500/10 text-red-500 border border-red-500/20 rounded-2xl hover:bg-red-500 hover:text-white transition-all font-black text-xs orbitron"
-                      >
-                        DELETE
-                      </button>
+                      <button onClick={() => handleDeleteQuestion(q.id)} className="mr-6 px-6 py-4 bg-red-500/10 text-red-500 border border-red-500/20 rounded-2xl hover:bg-red-500 hover:text-white transition-all font-black text-xs orbitron">DELETE</button>
                     </div>
                   ))
                 ) : (
-                  <div className="py-16 text-center text-gray-600 font-bold border-2 border-dashed border-white/5 rounded-[2.5rem]">
-                    {loading ? 'جاري جلب البيانات...' : 'لا توجد أسئلة مضافة لهذا القطاع حالياً.'}
-                  </div>
+                  <div className="py-16 text-center text-gray-600 font-bold border-2 border-dashed border-white/5 rounded-[2.5rem]">{loading ? 'جاري جلب البيانات...' : 'لا توجد أسئلة مضافة لهذا القطاع حالياً.'}</div>
                 )}
               </div>
             </section>
@@ -271,7 +193,6 @@ const AdminDashboard: React.FC = () => {
 
 /**
  * MAIN COMPONENT: App
- * Handles game state, auth, and routing to admin.
  */
 const App: React.FC = () => {
   const [isAdminRoute, setIsAdminRoute] = useState(window.location.hash === '#admin');
@@ -293,6 +214,10 @@ const App: React.FC = () => {
   const [lastFeedback, setLastFeedback] = useState<{ type: 'success' | 'fail', message: string } | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
+  // --- NEW MISSION TRANSITION STATE ---
+  const [correctAnswersCount, setCorrectAnswersCount] = useState(0);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+
   useEffect(() => {
     const handleHash = () => setIsAdminRoute(window.location.hash === '#admin');
     window.addEventListener('hashchange', handleHash);
@@ -303,9 +228,7 @@ const App: React.FC = () => {
     const mapped = questions.map((q, idx) => {
       const template = HARDCODED_LEVELS[idx % HARDCODED_LEVELS.length];
       return {
-        ...template,
-        id: q.id,
-        question: q.question_text,
+        ...template, id: q.id, question: q.question_text,
         options: [
           { text: q.option_a, isCorrect: q.correct_option === 'A', pos: template.options[0].pos },
           { text: q.option_b, isCorrect: q.correct_option === 'B', pos: template.options[1].pos },
@@ -320,30 +243,13 @@ const App: React.FC = () => {
     try {
       const cleanEmail = target?.trim().toLowerCase() || null;
       if (cleanEmail) {
-        const { data: userQuestions, error: userError } = await supabase
-          .from('custom_questions')
-          .select('*')
-          .eq('assigned_to_email', cleanEmail);
-        
-        if (!userError && userQuestions && userQuestions.length > 0) { 
-          mapQuestionsToLevels(userQuestions); 
-          return; 
-        }
+        const { data: userQuestions, error: userError } = await supabase.from('custom_questions').select('*').eq('assigned_to_email', cleanEmail);
+        if (!userError && userQuestions && userQuestions.length > 0) { mapQuestionsToLevels(userQuestions); return; }
       }
-      const { data: genQuestions, error: genError } = await supabase
-        .from('custom_questions')
-        .select('*')
-        .is('assigned_to_email', null);
-      
-      if (!genError && genQuestions && genQuestions.length > 0) {
-        mapQuestionsToLevels(genQuestions);
-      } else {
-        setActiveLevels(HARDCODED_LEVELS);
-      }
-    } catch (err) { 
-      console.error("Sync Logic Error:", err);
-      setActiveLevels(HARDCODED_LEVELS); 
-    }
+      const { data: genQuestions, error: genError } = await supabase.from('custom_questions').select('*').is('assigned_to_email', null);
+      if (!genError && genQuestions && genQuestions.length > 0) mapQuestionsToLevels(genQuestions);
+      else setActiveLevels(HARDCODED_LEVELS);
+    } catch (err) { console.error("Sync Logic Error:", err); setActiveLevels(HARDCODED_LEVELS); }
   };
 
   useEffect(() => {
@@ -379,7 +285,7 @@ const App: React.FC = () => {
   };
 
   const startGame = () => {
-    setScore(0); setLives(3); setLevelIndex(0); setAmmo(0);
+    setScore(0); setLives(3); setLevelIndex(0); setAmmo(0); setCorrectAnswersCount(0);
     setGameState(GameState.BRIEFING);
   };
 
@@ -389,6 +295,9 @@ const App: React.FC = () => {
     <div className="relative w-full h-screen bg-[#050510] text-white flex flex-col overflow-hidden text-right" dir="rtl">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,#1a1a3a_0%,#050510_100%)] z-0"></div>
       
+      {/* --- MISSION TRANSITION OVERLAY --- */}
+      {isTransitioning && <MissionTransition />}
+
       {gameState === GameState.LANDING && (
         <div className="relative z-20 h-full w-full flex flex-col items-center justify-center p-6 text-center animate-fade-in pointer-events-auto">
           <div className="relative mb-12">
@@ -435,7 +344,41 @@ const App: React.FC = () => {
         <div className="relative w-full h-full flex flex-col z-10 pointer-events-auto">
           <HUD score={score} lives={lives} level={levelIndex + 1} question={activeLevels[levelIndex].question} ammo={ammo} onToggleSettings={() => setIsSettingsOpen(!isSettingsOpen)} isSettingsOpen={isSettingsOpen} />
           <div className="flex-1 w-full relative">
-            <GameView levelData={activeLevels[levelIndex]} onCorrect={() => { setScore(s => s + 500); setLastFeedback({ type: 'success', message: 'ACCESS GRANTED' }); setTimeout(() => { setLastFeedback(null); if (levelIndex < activeLevels.length - 1) { setLevelIndex(i => i + 1); setGameState(GameState.BRIEFING); } else setGameState(GameState.RESULT); }, 2000); }} onIncorrect={() => { setLastFeedback({ type: 'fail', message: 'WRONG SECTOR' }); setTimeout(() => setLastFeedback(null), 1500); }} onEnemyHit={() => { setLives(l => { const next = l - 1; if (next <= 0) { setGameState(GameState.GAME_OVER); return 0; } return next; }); setLastFeedback({ type: 'fail', message: 'INTEGRITY FAIL' }); setTimeout(() => setLastFeedback(null), 1500); }} onAmmoChange={setAmmo} cameraMode={CameraMode.CHASE} />
+            <GameView 
+              levelData={activeLevels[levelIndex]} 
+              isTransitioning={isTransitioning}
+              onCorrect={() => { 
+                setScore(s => s + 500); 
+                const newCorrectCount = correctAnswersCount + 1;
+                setCorrectAnswersCount(newCorrectCount);
+                setLastFeedback({ type: 'success', message: 'ACCESS GRANTED' }); 
+                
+                setTimeout(() => { 
+                  setLastFeedback(null); 
+                  if (newCorrectCount === 3) {
+                    setIsTransitioning(true);
+                    setTimeout(() => {
+                      setIsTransitioning(false);
+                      setCorrectAnswersCount(0);
+                      // Move to next level if available after transition
+                      if (levelIndex < activeLevels.length - 1) { 
+                        setLevelIndex(i => i + 1); 
+                        setGameState(GameState.BRIEFING); 
+                      } else setGameState(GameState.RESULT);
+                    }, 4000);
+                  } else {
+                    if (levelIndex < activeLevels.length - 1) { 
+                      setLevelIndex(i => i + 1); 
+                      setGameState(GameState.BRIEFING); 
+                    } else setGameState(GameState.RESULT);
+                  }
+                }, 2000); 
+              }} 
+              onIncorrect={() => { setLastFeedback({ type: 'fail', message: 'WRONG SECTOR' }); setTimeout(() => setLastFeedback(null), 1500); }} 
+              onEnemyHit={() => { setLives(l => { const next = l - 1; if (next <= 0) { setGameState(GameState.GAME_OVER); return 0; } return next; }); setLastFeedback({ type: 'fail', message: 'INTEGRITY FAIL' }); setTimeout(() => setLastFeedback(null), 1500); }} 
+              onAmmoChange={setAmmo} 
+              cameraMode={CameraMode.CHASE} 
+            />
           </div>
           {lastFeedback && (
             <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
