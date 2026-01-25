@@ -10,7 +10,7 @@ import { supabase } from './lib/supabase';
 
 /**
  * COMPONENT: AdminDashboard
- * Full restoration of the mission control panel.
+ * تم تحسين منطق المزامنة لضمان عدم اختفاء الأسئلة بعد إضافتها.
  */
 const AdminDashboard: React.FC = () => {
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
@@ -29,6 +29,7 @@ const AdminDashboard: React.FC = () => {
     correct_option: 'A'
   });
 
+  // دالة لجلب البيانات الأساسية للقائمة الجانبية
   const fetchSidebarData = async () => {
     try {
       const { data: qData } = await supabase.from('custom_questions').select('*');
@@ -41,10 +42,10 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  // دالة لجلب الأسئلة الخاصة بالقطاع المحدد (عام أو مستخدم معين)
   const fetchTargetQuestions = useCallback(async () => {
-    setLoading(true);
+    // لا نضع loading هنا لكي لا تومض الشاشة أثناء التحديث بعد الإضافة
     try {
-      // نستخدم التوحيد هنا لضمان مطابقة البيانات بالرغم من حالة الأحرف
       const cleanEmail = activeAdminEmail ? activeAdminEmail.trim().toLowerCase() : null;
       let query = supabase.from('custom_questions').select('*').order('created_at', { ascending: false });
       
@@ -84,43 +85,53 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  // قائمة المستخدمين الموحدة (أحرف صغيرة دائماً)
   const userList = useMemo(() => {
-    // توحيد جميع الإيميلات إلى lowercase لمنع التكرار والاختفاء
-    const fromQuestions = allQuestions.map(q => q.assigned_to_email?.toLowerCase()).filter(Boolean);
-    const fromProfiles = registeredUsers.map(p => p.email?.toLowerCase()).filter(Boolean);
+    const fromQuestions = allQuestions.map(q => String(q.assigned_to_email || '').trim().toLowerCase()).filter(Boolean);
+    const fromProfiles = registeredUsers.map(p => String(p.email || '').trim().toLowerCase()).filter(Boolean);
     return Array.from(new Set([...fromProfiles, ...fromQuestions])).sort();
   }, [allQuestions, registeredUsers]);
 
   const handleSubmit = async (e: React.FormEvent, shouldClear: boolean = false) => {
     if(e) e.preventDefault();
     if(!adminFormData.question_text) return;
-    setLoading(true);
     
-    // توحيد الإيميل قبل الإرسال لقاعدة البيانات
-    const targetEmail = activeAdminEmail ? activeAdminEmail.trim().toLowerCase() : null;
+    setLoading(true);
+    // توحيد الإيميل قبل الإرسال والفلترة
+    const currentTarget = activeAdminEmail ? activeAdminEmail.trim().toLowerCase() : null;
     
     try {
-      const { error } = await supabase.from('custom_questions').insert([{ 
-        ...adminFormData, 
-        assigned_to_email: targetEmail 
-      }]);
+      // نطلب من سوبابيز إرجاع البيانات المدرجة حديثاً باستخدام .select()
+      const { data: insertedData, error } = await supabase
+        .from('custom_questions')
+        .insert([{ 
+          ...adminFormData, 
+          assigned_to_email: currentTarget 
+        }])
+        .select();
       
       if (error) throw error;
       
-      setAdminStatus({ type: 'success', msg: 'تم الحفظ والمزامنة!' });
+      setAdminStatus({ type: 'success', msg: 'تم الحفظ والمزامنة بنجاح!' });
       
+      // تحديث الواجهة فوراً بالعنصر الجديد لضمان عدم الاختفاء (Optimistic Update)
+      if (insertedData && insertedData.length > 0) {
+        const newQ = insertedData[0];
+        setAdminQuestions(prev => [newQ, ...prev]);
+      }
+
       if (shouldClear) {
         setAdminFormData({ question_text: '', option_a: '', option_b: '', option_c: '', correct_option: 'A' });
       }
       
-      // نقوم بجلب البيانات فوراً بعد الإضافة لضمان ظهورها
-      await fetchSidebarData();
-      await fetchTargetQuestions();
+      // مزامنة البيانات من الخادم في الخلفية
+      fetchSidebarData();
+      fetchTargetQuestions();
       
     } catch (err: any) { 
-      setAdminStatus({ type: 'error', msg: 'خطأ: ' + err.message }); 
-    } finally { 
-      setLoading(false); 
+      setAdminStatus({ type: 'error', msg: 'خطأ في الحفظ: ' + err.message }); 
+    } finally {
+      setLoading(false);
       setTimeout(() => setAdminStatus({ type: '', msg: '' }), 3000); 
     }
   };
@@ -175,7 +186,7 @@ const AdminDashboard: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <aside className="lg:col-span-3 bg-white/5 p-6 rounded-[2rem] border border-white/10">
             <h3 className="orbitron text-[10px] text-cyan-400 mb-6 tracking-widest font-black uppercase">Users & Targets</h3>
-            <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+            <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar text-right">
               <button 
                 onClick={() => setActiveAdminEmail(null)} 
                 className={`w-full text-right p-4 rounded-2xl transition-all ${activeAdminEmail === null ? 'bg-cyan-600 text-white' : 'hover:bg-white/5 text-gray-500 font-bold'}`}
@@ -185,7 +196,7 @@ const AdminDashboard: React.FC = () => {
               {userList.map(ema => (
                 <button 
                   key={ema} 
-                  onClick={() => setActiveAdminEmail(ema)} 
+                  onClick={() => setActiveAdminEmail(ema.toLowerCase())} 
                   className={`w-full text-right p-4 rounded-2xl transition-all truncate text-sm font-bold ${activeAdminEmail?.toLowerCase() === ema.toLowerCase() ? 'bg-purple-600 text-white' : 'hover:bg-white/5 text-gray-400'}`}
                 >
                   {ema}
@@ -364,10 +375,10 @@ const App: React.FC = () => {
       if (authMode === 'signup') {
         const { error, data } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
-        if (data.user) await supabase.from('profiles').insert([{ id: data.user.id, email: data.user.email }]);
+        if (data.user) await supabase.from('profiles').insert([{ id: data.user.id, email: data.user.email.toLowerCase() }]);
         setShowAuthModal(false); setGameState(GameState.PRO_SUCCESS);
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error } = await supabase.auth.signInWithPassword({ email: email.toLowerCase(), password });
         if (error) throw error;
         setShowAuthModal(false); setGameState(GameState.PRO_SUCCESS);
       }
@@ -443,7 +454,6 @@ const App: React.FC = () => {
             score={score} 
             lives={lives} 
             level={levelIndex + 1} 
-            // Correctly access the current question from the activeLevels array using the levelIndex
             question={activeLevels[levelIndex].question} 
             ammo={ammo} 
             onToggleSettings={() => setIsSettingsOpen(!isSettingsOpen)} 
