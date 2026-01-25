@@ -10,7 +10,7 @@ import { supabase } from './lib/supabase';
 
 /**
  * COMPONENT: AdminDashboard
- * Isolated view for mission control.
+ * Full restoration of the mission control panel.
  */
 const AdminDashboard: React.FC = () => {
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
@@ -18,7 +18,7 @@ const AdminDashboard: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [allQuestions, setAllQuestions] = useState<any[]>([]);
   const [adminQuestions, setAdminQuestions] = useState<any[]>([]); 
-  const [registeredUsers, setRegisteredUsers] = useState<string[]>([]);
+  const [registeredUsers, setRegisteredUsers] = useState<any[]>([]);
   const [activeAdminEmail, setActiveAdminEmail] = useState<string | null>(null);
   const [adminStatus, setAdminStatus] = useState({ type: '', msg: '' });
   const [adminFormData, setAdminFormData] = useState({
@@ -31,11 +31,16 @@ const AdminDashboard: React.FC = () => {
 
   const fetchSidebarData = async () => {
     try {
+      // Fetch all questions to see which emails are associated
       const { data: qData } = await supabase.from('custom_questions').select('assigned_to_email');
       if (qData) setAllQuestions(qData);
-      const { data: pData } = await supabase.from('profiles').select('email');
-      if (pData) setRegisteredUsers(pData.map(p => p.email).filter(e => e));
-    } catch (err) { console.error("Admin Sidebar Fetch Error:", err); }
+      
+      // Fetch registered users and their scores if available
+      const { data: pData } = await supabase.from('profiles').select('email, created_at');
+      if (pData) setRegisteredUsers(pData);
+    } catch (err) { 
+      console.error("Admin Sidebar Fetch Error:", err); 
+    }
   };
 
   const fetchTargetQuestions = useCallback(async () => {
@@ -44,13 +49,21 @@ const AdminDashboard: React.FC = () => {
     try {
       const cleanEmail = activeAdminEmail ? activeAdminEmail.trim().toLowerCase() : null;
       let query = supabase.from('custom_questions').select('*').order('created_at', { ascending: false });
-      if (cleanEmail) query = query.eq('assigned_to_email', cleanEmail);
-      else query = query.is('assigned_to_email', null);
+      
+      if (cleanEmail) {
+        query = query.eq('assigned_to_email', cleanEmail);
+      } else {
+        query = query.is('assigned_to_email', null);
+      }
+      
       const { data, error } = await query;
       if (error) throw error;
       setAdminQuestions(data || []);
-    } catch (err) { console.error("Target Questions Fetch Error:", err); }
-    finally { setLoading(false); }
+    } catch (err) { 
+      console.error("Target Questions Fetch Error:", err); 
+    } finally { 
+      setLoading(false); 
+    }
   }, [activeAdminEmail]);
 
   useEffect(() => { if (isAdminLoggedIn) fetchSidebarData(); }, [isAdminLoggedIn]);
@@ -65,13 +78,18 @@ const AdminDashboard: React.FC = () => {
       setAdminQuestions(prev => prev.filter(q => q.id !== id));
       setAdminStatus({ type: 'success', msg: 'تم الحذف بنجاح' });
       fetchSidebarData(); 
-    } catch (err: any) { alert("حدث خطأ أثناء الحذف: " + err.message); }
-    finally { setLoading(false); setTimeout(() => setAdminStatus({ type: '', msg: '' }), 2000); }
+    } catch (err: any) { 
+      alert("حدث خطأ أثناء الحذف: " + err.message); 
+    } finally { 
+      setLoading(false); 
+      setTimeout(() => setAdminStatus({ type: '', msg: '' }), 2000); 
+    }
   };
 
   const userList = useMemo(() => {
     const fromQuestions = allQuestions.map(q => q.assigned_to_email).filter((ema): ema is string => !!ema);
-    return Array.from(new Set([...registeredUsers, ...fromQuestions])).sort();
+    const fromProfiles = registeredUsers.map(p => p.email).filter((ema): ema is string => !!ema);
+    return Array.from(new Set([...fromProfiles, ...fromQuestions])).sort();
   }, [allQuestions, registeredUsers]);
 
   const handleSubmit = async (e: React.FormEvent, shouldClear: boolean = false) => {
@@ -83,26 +101,45 @@ const AdminDashboard: React.FC = () => {
       const { data: inserted, error } = await supabase.from('custom_questions').insert([{ 
         ...adminFormData, assigned_to_email: targetEmail 
       }]).select();
+      
       if (error) throw error;
+      
       setAdminStatus({ type: 'success', msg: 'تم الحفظ والمزامنة!' });
       if (inserted && inserted.length > 0) {
         const q = inserted[0];
         const qEmail = q.assigned_to_email ? q.assigned_to_email.toLowerCase() : null;
         if (qEmail === targetEmail) setAdminQuestions(prev => [q, ...prev]);
       }
-      if (shouldClear) setAdminFormData({ question_text: '', option_a: '', option_b: '', option_c: '', correct_option: 'A' });
+      if (shouldClear) {
+        setAdminFormData({ question_text: '', option_a: '', option_b: '', option_c: '', correct_option: 'A' });
+      }
       fetchSidebarData();
-    } catch (err: any) { setAdminStatus({ type: 'error', msg: 'خطأ: ' + err.message }); }
-    finally { setLoading(false); setTimeout(() => setAdminStatus({ type: '', msg: '' }), 3000); }
+    } catch (err: any) { 
+      setAdminStatus({ type: 'error', msg: 'خطأ: ' + err.message }); 
+    } finally { 
+      setLoading(false); 
+      setTimeout(() => setAdminStatus({ type: '', msg: '' }), 3000); 
+    }
   };
 
   if (!isAdminLoggedIn) {
     return (
       <div className="fixed inset-0 z-[200] bg-[#050510] flex items-center justify-center p-6" dir="rtl">
-        <div className="bg-[#0a0a20] border border-cyan-500/30 p-12 rounded-[3rem] text-center w-full max-w-md shadow-2xl">
+        <div className="bg-[#0a0a20] border border-cyan-500/30 p-12 rounded-[3rem] text-center w-full max-w-md shadow-2xl animate-fade-in">
           <h2 className="text-3xl font-black text-white mb-8 orbitron">SECURE ACCESS</h2>
-          <input type="password" placeholder="ACCESS KEY" value={adminPassInput} onChange={e => setAdminPassInput(e.target.value)} className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl text-center text-xl outline-none focus:border-cyan-500 mb-6 text-white" />
-          <button onClick={() => { if(adminPassInput === 'ADMIN_9RA_2025') setIsAdminLoggedIn(true); }} className="w-full py-5 bg-cyan-600 rounded-2xl font-black orbitron">INITIATE LINK</button>
+          <input 
+            type="password" 
+            placeholder="ACCESS KEY" 
+            value={adminPassInput} 
+            onChange={e => setAdminPassInput(e.target.value)} 
+            className="w-full bg-white/5 border border-white/10 p-5 rounded-2xl text-center text-xl outline-none focus:border-cyan-500 mb-6 text-white" 
+          />
+          <button 
+            onClick={() => { if(adminPassInput === 'ADMIN_9RA_2025') setIsAdminLoggedIn(true); }} 
+            className="w-full py-5 bg-cyan-600 rounded-2xl font-black orbitron text-white hover:bg-cyan-500 transition-all"
+          >
+            INITIATE LINK
+          </button>
         </div>
       </div>
     );
@@ -111,17 +148,137 @@ const AdminDashboard: React.FC = () => {
   return (
     <div className="fixed inset-0 z-[200] bg-[#050510] flex flex-col overflow-y-auto p-4 md:p-10" dir="rtl">
       <div className="max-w-7xl mx-auto w-full space-y-8">
+        {/* Header */}
         <header className="flex justify-between items-center bg-white/5 p-8 rounded-[2.5rem] border border-white/10 backdrop-blur-md">
           <div className="text-right">
             <h1 className="text-3xl font-black orbitron text-white">MISSION CONTROL</h1>
             <p className="text-cyan-400 text-xs font-bold tracking-widest uppercase">Admin Management Dashboard</p>
           </div>
           <div className="flex gap-4">
-            <button onClick={() => { fetchSidebarData(); fetchTargetQuestions(); }} className="px-6 py-2 bg-white/5 border border-white/10 rounded-full text-xs font-black hover:bg-white/10 text-white">REFRESH</button>
-            <button onClick={() => window.location.hash = ''} className="px-8 py-3 bg-red-500/10 text-red-500 border border-red-500/30 rounded-full font-black">EXIT</button>
+            <button 
+              onClick={() => { fetchSidebarData(); fetchTargetQuestions(); }} 
+              className="px-6 py-2 bg-white/5 border border-white/10 rounded-full text-xs font-black hover:bg-white/10 text-white transition-all"
+            >
+              REFRESH
+            </button>
+            <button 
+              onClick={() => window.location.hash = ''} 
+              className="px-8 py-3 bg-red-500/10 text-red-500 border border-red-500/30 rounded-full font-black hover:bg-red-500 hover:text-white transition-all"
+            >
+              EXIT
+            </button>
           </div>
         </header>
-        {/* Rest of Admin Dashboard truncated for brevity, same as original */}
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* Sidebar */}
+          <aside className="lg:col-span-3 bg-white/5 p-6 rounded-[2rem] border border-white/10">
+            <h3 className="orbitron text-[10px] text-cyan-400 mb-6 tracking-widest font-black uppercase">Users & Targets</h3>
+            <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+              <button 
+                onClick={() => setActiveAdminEmail(null)} 
+                className={`w-full text-right p-4 rounded-2xl transition-all ${activeAdminEmail === null ? 'bg-cyan-600 text-white' : 'hover:bg-white/5 text-gray-500 font-bold'}`}
+              >
+                الأسئلة العامة (للجميع)
+              </button>
+              {userList.map(ema => (
+                <button 
+                  key={ema} 
+                  onClick={() => setActiveAdminEmail(ema)} 
+                  className={`w-full text-right p-4 rounded-2xl transition-all truncate text-sm font-bold ${activeAdminEmail === ema ? 'bg-purple-600 text-white' : 'hover:bg-white/5 text-gray-400'}`}
+                >
+                  {ema}
+                </button>
+              ))}
+            </div>
+          </aside>
+
+          {/* Main Content */}
+          <main className="lg:col-span-9 space-y-8">
+            {/* Form Section */}
+            <section className="bg-white/5 p-10 rounded-[2.5rem] border border-white/10">
+              <h2 className="text-2xl font-black mb-8 text-white">إضافة سؤال لـ: <span className="text-cyan-400">{activeAdminEmail || 'القطاع العام'}</span></h2>
+              <form onSubmit={e => handleSubmit(e)} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="md:col-span-2">
+                  <textarea 
+                    required 
+                    placeholder="نص السؤال..." 
+                    className="w-full bg-black/40 border border-white/10 p-5 rounded-2xl text-lg font-bold outline-none text-white focus:border-cyan-500 h-32" 
+                    value={adminFormData.question_text} 
+                    onChange={e => setAdminFormData({...adminFormData, question_text: e.target.value})} 
+                  />
+                </div>
+                <div className="space-y-4">
+                  <input required placeholder="الخيار الأول (Option A)" className="w-full bg-black/40 border border-white/10 p-4 rounded-xl text-white outline-none focus:border-cyan-500" value={adminFormData.option_a} onChange={e => setAdminFormData({...adminFormData, option_a: e.target.value})} />
+                  <input required placeholder="الخيار الثاني (Option B)" className="w-full bg-black/40 border border-white/10 p-4 rounded-xl text-white outline-none focus:border-cyan-500" value={adminFormData.option_b} onChange={e => setAdminFormData({...adminFormData, option_b: e.target.value})} />
+                  <input required placeholder="الخيار الثالث (Option C)" className="w-full bg-black/40 border border-white/10 p-4 rounded-xl text-white outline-none focus:border-cyan-500" value={adminFormData.option_c} onChange={e => setAdminFormData({...adminFormData, option_c: e.target.value})} />
+                </div>
+                <div className="flex flex-col justify-between">
+                  <div className="space-y-2">
+                    <label className="text-xs font-black text-gray-500 uppercase tracking-widest">Correct Key</label>
+                    <select 
+                      className="w-full bg-black border border-white/10 p-4 rounded-xl text-white outline-none orbitron font-bold appearance-none cursor-pointer hover:border-cyan-500" 
+                      value={adminFormData.correct_option} 
+                      onChange={e => setAdminFormData({...adminFormData, correct_option: e.target.value})}
+                    >
+                      <option value="A">OPTION A</option>
+                      <option value="B">OPTION B</option>
+                      <option value="C">OPTION C</option>
+                    </select>
+                  </div>
+                  <div className="mt-8 flex flex-col gap-4">
+                    {adminStatus.msg && (
+                      <div className={`text-center p-3 rounded-xl text-xs font-black ${adminStatus.type === 'success' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+                        {adminStatus.msg}
+                      </div>
+                    )}
+                    <div className="flex gap-4">
+                      <button type="submit" disabled={loading} className="flex-1 py-5 bg-cyan-600 rounded-2xl font-black orbitron text-white hover:bg-cyan-500 transition-all">
+                        {loading ? 'PROCESSING...' : 'SAVE'}
+                      </button>
+                      <button type="button" onClick={(e) => handleSubmit(e, true)} className="flex-1 py-5 bg-[#00FF41] text-black rounded-2xl font-black orbitron shadow-[0_0_20px_rgba(0,255,65,0.4)] hover:bg-[#00e63b] transition-all">
+                        SAVE & ADD
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </form>
+            </section>
+
+            {/* Questions List Section */}
+            <section className="bg-white/5 p-10 rounded-[2.5rem] border border-white/10">
+              <h3 className="orbitron text-center text-gray-500 mb-8 font-black uppercase tracking-widest">إدارة الأسئلة النشطة</h3>
+              <div className="space-y-4">
+                {adminQuestions.length > 0 ? (
+                  adminQuestions.map(q => (
+                    <div key={q.id} className="bg-black/40 p-6 rounded-[2rem] flex flex-col md:flex-row justify-between items-center border border-white/5 hover:border-cyan-500/30 transition-all duration-300 gap-6">
+                      <div className="flex-1 text-right w-full">
+                        <p className="font-bold text-lg text-white mb-4 leading-relaxed">{q.question_text}</p>
+                        <div className="flex flex-wrap gap-3 justify-end">
+                          {['A','B','C'].map(k => (
+                            <div key={k} className={`px-4 py-2 rounded-xl text-[10px] font-bold border transition-all ${q.correct_option === k ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.2)]' : 'bg-black/30 border-white/5 text-gray-500'}`}>
+                              {k}: {q['option_'+k.toLowerCase()]}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <button 
+                        onClick={() => handleDeleteQuestion(q.id)} 
+                        className="px-6 py-4 bg-red-500/10 text-red-500 border border-red-500/20 rounded-2xl hover:bg-red-500 hover:text-white transition-all font-black text-xs orbitron shrink-0"
+                      >
+                        DELETE
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <div className="py-16 text-center text-gray-600 font-bold border-2 border-dashed border-white/5 rounded-[2.5rem]">
+                    {loading ? 'جاري جلب البيانات من الخادم المركزي...' : 'لا توجد أسئلة مضافة لهذا القطاع حالياً.'}
+                  </div>
+                )}
+              </div>
+            </section>
+          </main>
+        </div>
       </div>
     </div>
   );
@@ -245,8 +402,8 @@ const App: React.FC = () => {
           <div className="flex flex-col items-center justify-center flex-1 w-full max-w-lg landscape:max-w-md">
             <h2 className="text-[clamp(1rem,2.5vh,1.5rem)] font-bold text-gray-300 mb-[4vh] leading-relaxed">أول منصة تعليمية تجمع بين المغامرة والتحصيل الدراسي</h2>
             <div className="flex flex-col gap-[2vh] w-full">
-              <button onClick={() => setGameState(GameState.INTRO)} className="py-[1.5vh] px-8 bg-white/5 border border-white/10 rounded-2xl text-[clamp(0.9rem,2vh,1.2rem)] font-bold hover:bg-white/10 transition-all active:scale-95 shadow-lg">النسخة المجانية</button>
-              <button onClick={() => setShowAuthModal(true)} className="py-[1.5vh] px-8 bg-gradient-to-r from-cyan-600 to-blue-700 rounded-2xl text-[clamp(0.9rem,2vh,1.2rem)] font-black hover:from-cyan-500 hover:to-blue-600 transition-all active:scale-95 shadow-[0_0_30px_rgba(8,145,178,0.5)]">النسخة المدفوعة</button>
+              <button onClick={() => setGameState(GameState.INTRO)} className="py-[1.5vh] px-8 bg-white/5 border border-white/10 rounded-2xl text-[clamp(0.9rem,2vh,1.2rem)] font-bold hover:bg-white/10 transition-all active:scale-95 shadow-lg text-white">النسخة المجانية</button>
+              <button onClick={() => setShowAuthModal(true)} className="py-[1.5vh] px-8 bg-gradient-to-r from-cyan-600 to-blue-700 rounded-2xl text-[clamp(0.9rem,2vh,1.2rem)] font-black hover:from-cyan-500 hover:to-blue-600 transition-all active:scale-95 shadow-[0_0_30px_rgba(8,145,178,0.5)] text-white">النسخة المدفوعة</button>
             </div>
           </div>
 
@@ -263,7 +420,7 @@ const App: React.FC = () => {
                   <input type="email" placeholder="Email" required value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 outline-none focus:border-cyan-500 text-white text-sm" />
                   <input type="password" placeholder="Password" required value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 outline-none focus:border-cyan-500 text-white text-sm" />
                   {authError && <p className="text-red-500 text-[10px] font-bold">{authError}</p>}
-                  <button disabled={loading} className="w-full py-3 bg-cyan-600 rounded-xl font-black orbitron mt-2 text-sm">{loading ? 'PROCESSING...' : 'CONFIRM LINK'}</button>
+                  <button disabled={loading} className="w-full py-3 bg-cyan-600 rounded-xl font-black orbitron mt-2 text-sm text-white">{loading ? 'PROCESSING...' : 'CONFIRM LINK'}</button>
                 </form>
               </div>
             </div>
