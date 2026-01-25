@@ -31,13 +31,22 @@ const AdminDashboard: React.FC = () => {
 
   const fetchSidebarData = async () => {
     try {
-      // Fetch all questions to see which emails are associated
-      const { data: qData } = await supabase.from('custom_questions').select('assigned_to_email');
-      if (qData) setAllQuestions(qData);
+      // Fetch all questions to see which emails are associated - using .select('*') as requested
+      const { data: qData } = await supabase.from('custom_questions').select('*');
+      if (qData) {
+        setAllQuestions(qData);
+      } else {
+        setAllQuestions([]);
+      }
       
-      // Fetch registered users and their scores if available
-      const { data: pData } = await supabase.from('profiles').select('email, created_at');
-      if (pData) setRegisteredUsers(pData);
+      // Fetch registered users - explicitly using .select('*') and ensuring no limits are applied
+      // This ensures we get ALL users from the profiles table.
+      const { data: pData } = await supabase.from('profiles').select('*');
+      if (pData) {
+        setRegisteredUsers(pData);
+      } else {
+        setRegisteredUsers([]);
+      }
     } catch (err) { 
       console.error("Admin Sidebar Fetch Error:", err); 
     }
@@ -87,8 +96,11 @@ const AdminDashboard: React.FC = () => {
   };
 
   const userList = useMemo(() => {
+    // Collect emails from both questions metadata and actual user profiles
     const fromQuestions = allQuestions.map(q => q.assigned_to_email).filter((ema): ema is string => !!ema);
     const fromProfiles = registeredUsers.map(p => p.email).filter((ema): ema is string => !!ema);
+    
+    // Use Set to ensure unique list of all target emails
     return Array.from(new Set([...fromProfiles, ...fromQuestions])).sort();
   }, [allQuestions, registeredUsers]);
 
