@@ -117,7 +117,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
       isDormant: true
     }));
 
-    // Re-initialize Power-Ups in standard spots
     powerUpsRef.current = [
       { x: 3 * TILE_SIZE + 32, y: 3 * TILE_SIZE + 32, type: 'shield', picked: false },
       { x: 11 * TILE_SIZE + 32, y: 7 * TILE_SIZE + 32, type: 'weapon', picked: false }
@@ -189,10 +188,13 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     if (!p.isDead) {
       let inputX = currentMoveVec.current.x;
       let inputY = currentMoveVec.current.y;
+      
+      // Snappy physics: No acceleration or damping applied to the velocity
       if (inputX !== 0 || inputY !== 0) {
         const mag = Math.hypot(inputX, inputY);
         const dx = (inputX / mag) * PLAYER_SPEED;
         const dy = (inputY / mag) * PLAYER_SPEED;
+        
         let canMoveX = !checkCollision(p.x + dx, p.y);
         let canMoveY = !checkCollision(p.x, p.y + dy);
         
@@ -204,24 +206,25 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
           if (Math.abs(dx) > Math.abs(dy)) p.dir = dx > 0 ? 'right' : 'left';
           else p.dir = dy > 0 ? 'down' : 'up';
           const targetAngle = Math.atan2(dy, dx) + Math.PI / 2;
-          p.currentAngle = lerpAngle(p.currentAngle, targetAngle, 0.15);
-          p.moveIntensity = Math.min(p.moveIntensity + 0.1, 1);
+          // Faster rotation lerp (0.4) for snappier feedback
+          p.currentAngle = lerpAngle(p.currentAngle, targetAngle, 0.4);
+          p.moveIntensity = Math.min(p.moveIntensity + 0.2, 1);
         } else {
-          p.moveIntensity = Math.max(p.moveIntensity - 0.1, 0);
+          p.moveIntensity = Math.max(p.moveIntensity - 0.2, 0);
         }
       } else {
         p.vx = 0; p.vy = 0;
-        p.moveIntensity = Math.max(p.moveIntensity - 0.1, 0);
+        p.moveIntensity = Math.max(p.moveIntensity - 0.2, 0);
       }
+
       if (p.respawnGrace > 0) p.respawnGrace -= dt;
       if (p.shieldTime > 0) {
         p.shieldTime -= dt;
         if (p.shieldTime <= 0) p.isShielded = false;
       }
-      cameraRef.current.x = lerp(cameraRef.current.x, p.x + 22, 0.1);
-      cameraRef.current.y = lerp(cameraRef.current.y, p.y + 22, 0.1);
+      cameraRef.current.x = lerp(cameraRef.current.x, p.x + 22, 0.15);
+      cameraRef.current.y = lerp(cameraRef.current.y, p.y + 22, 0.15);
       
-      // PowerUp Collision
       const pCenterX = p.x + 22, pCenterY = p.y + 22;
       for (const pw of powerUpsRef.current) {
           if (pw.picked) continue;
@@ -267,7 +270,9 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
       const eDist = Math.hypot(targetX - e.x, targetY - e.y);
       
       if (eDist > 1) {
-        const baseS = ENEMY_SPEED_BASE * (0.8 + ((levelData.id || 1) * 0.05));
+        // Uniform enemy speed scaling: Capped to prevent "impossibly fast" behavior
+        const levelScaling = Math.min((levelData.id || 1) * 0.04, 0.4);
+        const baseS = ENEMY_SPEED_BASE * (0.8 + levelScaling);
         let dvx = ((targetX - e.x) / eDist) * baseS;
         let dvy = ((targetY - e.y) / eDist) * baseS;
 
@@ -387,13 +392,11 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     ctx.shadowBlur = 15 + pulse * 10;
     ctx.shadowColor = pw.type === 'shield' ? '#00f2ff' : '#ff9f43';
     
-    // Outer Glow Circle
     ctx.globalAlpha = 0.2 + pulse * 0.2;
     ctx.fillStyle = pw.type === 'shield' ? '#00f2ff' : '#ff9f43';
     ctx.beginPath(); ctx.arc(0, 0, 20 + pulse * 5, 0, Math.PI * 2); ctx.fill();
     ctx.globalAlpha = 1;
 
-    // Icon drawing
     if (pw.type === 'shield') {
         ctx.fillStyle = '#00f2ff';
         ctx.beginPath();
@@ -467,7 +470,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
         }
       }
     }
-    // Draw elements in order
     for (const pw of powerUpsRef.current) drawPowerUp(ctx, pw);
     for (const pj of projectilesRef.current) drawProjectile(ctx, pj);
     drawPlayer(ctx);
