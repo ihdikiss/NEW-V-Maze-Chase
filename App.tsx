@@ -31,22 +31,11 @@ const AdminDashboard: React.FC = () => {
 
   const fetchSidebarData = async () => {
     try {
-      // Fetch all questions to see which emails are associated - using .select('*') as requested
       const { data: qData } = await supabase.from('custom_questions').select('*');
-      if (qData) {
-        setAllQuestions(qData);
-      } else {
-        setAllQuestions([]);
-      }
+      if (qData) setAllQuestions(qData);
       
-      // Fetch registered users - explicitly using .select('*') and ensuring no limits are applied
-      // This ensures we get ALL users from the profiles table.
       const { data: pData } = await supabase.from('profiles').select('*');
-      if (pData) {
-        setRegisteredUsers(pData);
-      } else {
-        setRegisteredUsers([]);
-      }
+      if (pData) setRegisteredUsers(pData);
     } catch (err) { 
       console.error("Admin Sidebar Fetch Error:", err); 
     }
@@ -54,8 +43,8 @@ const AdminDashboard: React.FC = () => {
 
   const fetchTargetQuestions = useCallback(async () => {
     setLoading(true);
-    setAdminQuestions([]); 
     try {
+      // نستخدم التوحيد هنا لضمان مطابقة البيانات بالرغم من حالة الأحرف
       const cleanEmail = activeAdminEmail ? activeAdminEmail.trim().toLowerCase() : null;
       let query = supabase.from('custom_questions').select('*').order('created_at', { ascending: false });
       
@@ -96,11 +85,9 @@ const AdminDashboard: React.FC = () => {
   };
 
   const userList = useMemo(() => {
-    // Collect emails from both questions metadata and actual user profiles
-    const fromQuestions = allQuestions.map(q => q.assigned_to_email).filter((ema): ema is string => !!ema);
-    const fromProfiles = registeredUsers.map(p => p.email).filter((ema): ema is string => !!ema);
-    
-    // Use Set to ensure unique list of all target emails
+    // توحيد جميع الإيميلات إلى lowercase لمنع التكرار والاختفاء
+    const fromQuestions = allQuestions.map(q => q.assigned_to_email?.toLowerCase()).filter(Boolean);
+    const fromProfiles = registeredUsers.map(p => p.email?.toLowerCase()).filter(Boolean);
     return Array.from(new Set([...fromProfiles, ...fromQuestions])).sort();
   }, [allQuestions, registeredUsers]);
 
@@ -108,24 +95,28 @@ const AdminDashboard: React.FC = () => {
     if(e) e.preventDefault();
     if(!adminFormData.question_text) return;
     setLoading(true);
+    
+    // توحيد الإيميل قبل الإرسال لقاعدة البيانات
     const targetEmail = activeAdminEmail ? activeAdminEmail.trim().toLowerCase() : null;
+    
     try {
-      const { data: inserted, error } = await supabase.from('custom_questions').insert([{ 
-        ...adminFormData, assigned_to_email: targetEmail 
-      }]).select();
+      const { error } = await supabase.from('custom_questions').insert([{ 
+        ...adminFormData, 
+        assigned_to_email: targetEmail 
+      }]);
       
       if (error) throw error;
       
       setAdminStatus({ type: 'success', msg: 'تم الحفظ والمزامنة!' });
-      if (inserted && inserted.length > 0) {
-        const q = inserted[0];
-        const qEmail = q.assigned_to_email ? q.assigned_to_email.toLowerCase() : null;
-        if (qEmail === targetEmail) setAdminQuestions(prev => [q, ...prev]);
-      }
+      
       if (shouldClear) {
         setAdminFormData({ question_text: '', option_a: '', option_b: '', option_c: '', correct_option: 'A' });
       }
-      fetchSidebarData();
+      
+      // نقوم بجلب البيانات فوراً بعد الإضافة لضمان ظهورها
+      await fetchSidebarData();
+      await fetchTargetQuestions();
+      
     } catch (err: any) { 
       setAdminStatus({ type: 'error', msg: 'خطأ: ' + err.message }); 
     } finally { 
@@ -160,7 +151,6 @@ const AdminDashboard: React.FC = () => {
   return (
     <div className="fixed inset-0 z-[200] bg-[#050510] flex flex-col overflow-y-auto p-4 md:p-10" dir="rtl">
       <div className="max-w-7xl mx-auto w-full space-y-8">
-        {/* Header */}
         <header className="flex justify-between items-center bg-white/5 p-8 rounded-[2.5rem] border border-white/10 backdrop-blur-md">
           <div className="text-right">
             <h1 className="text-3xl font-black orbitron text-white">MISSION CONTROL</h1>
@@ -183,7 +173,6 @@ const AdminDashboard: React.FC = () => {
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Sidebar */}
           <aside className="lg:col-span-3 bg-white/5 p-6 rounded-[2rem] border border-white/10">
             <h3 className="orbitron text-[10px] text-cyan-400 mb-6 tracking-widest font-black uppercase">Users & Targets</h3>
             <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
@@ -197,7 +186,7 @@ const AdminDashboard: React.FC = () => {
                 <button 
                   key={ema} 
                   onClick={() => setActiveAdminEmail(ema)} 
-                  className={`w-full text-right p-4 rounded-2xl transition-all truncate text-sm font-bold ${activeAdminEmail === ema ? 'bg-purple-600 text-white' : 'hover:bg-white/5 text-gray-400'}`}
+                  className={`w-full text-right p-4 rounded-2xl transition-all truncate text-sm font-bold ${activeAdminEmail?.toLowerCase() === ema.toLowerCase() ? 'bg-purple-600 text-white' : 'hover:bg-white/5 text-gray-400'}`}
                 >
                   {ema}
                 </button>
@@ -205,9 +194,7 @@ const AdminDashboard: React.FC = () => {
             </div>
           </aside>
 
-          {/* Main Content */}
           <main className="lg:col-span-9 space-y-8">
-            {/* Form Section */}
             <section className="bg-white/5 p-10 rounded-[2.5rem] border border-white/10">
               <h2 className="text-2xl font-black mb-8 text-white">إضافة سؤال لـ: <span className="text-cyan-400">{activeAdminEmail || 'القطاع العام'}</span></h2>
               <form onSubmit={e => handleSubmit(e)} className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -257,7 +244,6 @@ const AdminDashboard: React.FC = () => {
               </form>
             </section>
 
-            {/* Questions List Section */}
             <section className="bg-white/5 p-10 rounded-[2.5rem] border border-white/10">
               <h3 className="orbitron text-center text-gray-500 mb-8 font-black uppercase tracking-widest">إدارة الأسئلة النشطة</h3>
               <div className="space-y-4">
@@ -457,6 +443,7 @@ const App: React.FC = () => {
             score={score} 
             lives={lives} 
             level={levelIndex + 1} 
+            // Correctly access the current question from the activeLevels array using the levelIndex
             question={activeLevels[levelIndex].question} 
             ammo={ammo} 
             onToggleSettings={() => setIsSettingsOpen(!isSettingsOpen)} 
