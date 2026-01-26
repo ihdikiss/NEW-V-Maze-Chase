@@ -400,19 +400,33 @@ const App: React.FC = () => {
       {isTransitioning && <MissionTransition />}
 
       {gameState === GameState.LANDING && (
-        <div className="relative z-20 h-full w-full flex flex-col landscape:flex-row items-center justify-center p-[4vh] text-center animate-fade-in pointer-events-auto overflow-hidden">
-          <div className="relative mb-[4vh] landscape:mb-0 landscape:mr-[4vw] flex flex-col items-center flex-1">
-            <div className="absolute -inset-10 bg-cyan-500/10 blur-3xl rounded-full"></div>
-            <h1 className="text-[clamp(4rem,15vh,12rem)] font-black orbitron text-transparent bg-clip-text bg-gradient-to-br from-cyan-400 to-emerald-400 leading-none mb-2">9</h1>
-            <h1 className="text-[clamp(2rem,6vh,5rem)] font-black orbitron text-white tracking-tighter">RA <span className="text-emerald-400">O</span> NCHT</h1>
-            <div className="h-1.5 w-full max-w-[300px] bg-gradient-to-r from-cyan-500 to-transparent mt-2 rounded-full"></div>
-          </div>
-
-          <div className="flex flex-col items-center justify-center flex-1 w-full max-w-lg landscape:max-w-md">
-            <h2 className="text-[clamp(1rem,2.5vh,1.5rem)] font-bold text-gray-300 mb-[4vh] leading-relaxed">أول منصة تعليمية تجمع بين المغامرة والتحصيل الدراسي</h2>
-            <div className="flex flex-col gap-[2vh] w-full">
-              <button onClick={() => setGameState(GameState.INTRO)} className="py-[1.5vh] px-8 bg-white/5 border border-white/10 rounded-2xl text-[clamp(0.9rem,2vh,1.2rem)] font-bold hover:bg-white/10 transition-all active:scale-95 shadow-lg text-white">النسخة المجانية</button>
-              <button onClick={() => setShowAuthModal(true)} className="py-[1.5vh] px-8 bg-gradient-to-r from-cyan-600 to-blue-700 rounded-2xl text-[clamp(0.9rem,2vh,1.2rem)] font-black hover:from-cyan-500 hover:to-blue-600 transition-all active:scale-95 shadow-[0_0_30px_rgba(8,145,178,0.5)] text-white">النسخة المدفوعة</button>
+        <div className="relative z-20 h-full w-full flex flex-col items-center justify-center p-[4vh] text-center animate-fade-in pointer-events-auto overflow-hidden">
+          {/* تم حذف شعار العلامة التجارية الكبير من الجهة اليمنى بناءً على طلب المستخدم */}
+          <div className="flex flex-col items-center justify-center w-full max-w-2xl">
+            <div className="mb-8 relative">
+               <div className="absolute -inset-10 bg-cyan-500/10 blur-3xl rounded-full"></div>
+               <h1 className="text-[clamp(2.5rem,8vh,6rem)] font-black orbitron text-white tracking-tighter drop-shadow-[0_0_20px_rgba(0,210,255,0.3)]">
+                 9RA <span className="text-emerald-400">O</span> NCHT
+               </h1>
+            </div>
+            
+            <h2 className="text-[clamp(1.2rem,3vh,2rem)] font-bold text-gray-300 mb-[6vh] leading-relaxed max-w-xl">
+              أول منصة تعليمية تجمع بين المغامرة والتحصيل الدراسي
+            </h2>
+            
+            <div className="flex flex-col gap-[3vh] w-full max-w-md">
+              <button 
+                onClick={() => setGameState(GameState.INTRO)} 
+                className="py-[2vh] px-10 bg-white/5 border border-white/10 rounded-2xl text-[clamp(1rem,2.2vh,1.4rem)] font-bold hover:bg-white/10 transition-all active:scale-95 shadow-lg text-white"
+              >
+                النسخة المجانية
+              </button>
+              <button 
+                onClick={() => setShowAuthModal(true)} 
+                className="py-[2vh] px-10 bg-gradient-to-r from-cyan-600 to-blue-700 rounded-2xl text-[clamp(1rem,2.2vh,1.4rem)] font-black hover:from-cyan-500 hover:to-blue-600 transition-all active:scale-95 shadow-[0_0_40px_rgba(8,145,178,0.5)] text-white"
+              >
+                النسخة المدفوعة
+              </button>
             </div>
           </div>
 
