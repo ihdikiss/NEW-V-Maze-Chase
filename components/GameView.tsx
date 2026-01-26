@@ -55,6 +55,11 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   const [isGlitching, setIsGlitching] = useState(false);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
+  // Physics Normalization & Versioning
+  useEffect(() => {
+    console.log('Game Version 1.0.5 - Balanced Speed');
+  }, []);
+
   const getDynamicZoom = useCallback(() => {
     if (!dimensions.width || !dimensions.height) return 1.0;
     const worldW = levelData.maze[0].length * TILE_SIZE;
@@ -68,10 +73,12 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   }, [dimensions, levelData.maze, cameraMode]);
 
   const lerp = (start: number, end: number, amt: number) => (1 - amt) * start + amt * end;
+  
   const lerpAngle = (current: number, target: number, step: number) => {
     let diff = target - current;
     while (diff < -Math.PI) diff += Math.PI * 2;
     while (diff > Math.PI) diff -= Math.PI * 2;
+    // Step is normalized by delta time in the update loop to ensure consistency
     return current + diff * step;
   };
 
@@ -173,7 +180,9 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
 
   const update = useCallback(() => {
     const now = performance.now();
-    const dt = (now - lastUpdateRef.current) / 1000;
+    // Use 1/60s as a fallback to prevent jumps, and clamp dt to 0.1s max
+    let dt = (now - lastUpdateRef.current) / 1000;
+    if (dt > 0.1) dt = 0.016; 
     lastUpdateRef.current = now;
 
     if (isTransitioning) {
@@ -186,35 +195,40 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
 
     const p = playerRef.current;
     if (!p.isDead) {
-      let inputX = currentMoveVec.current.x;
-      let inputY = currentMoveVec.current.y;
+      const inputX = currentMoveVec.current.x;
+      const inputY = currentMoveVec.current.y;
       
-      // Snappy physics: No acceleration or damping applied to the velocity
       if (inputX !== 0 || inputY !== 0) {
         const mag = Math.hypot(inputX, inputY);
-        const dx = (inputX / mag) * PLAYER_SPEED;
-        const dy = (inputY / mag) * PLAYER_SPEED;
+        // Normalized speed based on Delta Time
+        const speedX = (inputX / mag) * PLAYER_SPEED;
+        const speedY = (inputY / mag) * PLAYER_SPEED;
         
-        let canMoveX = !checkCollision(p.x + dx, p.y);
-        let canMoveY = !checkCollision(p.x, p.y + dy);
+        const dx = speedX * dt;
+        const dy = speedY * dt;
         
-        p.vx = dx; p.vy = dy;
+        // Strict collision check
+        const canMoveX = !checkCollision(p.x + dx, p.y);
+        const canMoveY = !checkCollision(p.x, p.y + dy);
+        
+        p.vx = speedX; p.vy = speedY;
         if (canMoveX) p.x += dx;
         if (canMoveY) p.y += dy;
         
         if (canMoveX || canMoveY) {
-          if (Math.abs(dx) > Math.abs(dy)) p.dir = dx > 0 ? 'right' : 'left';
-          else p.dir = dy > 0 ? 'down' : 'up';
-          const targetAngle = Math.atan2(dy, dx) + Math.PI / 2;
-          // Faster rotation lerp (0.4) for snappier feedback
-          p.currentAngle = lerpAngle(p.currentAngle, targetAngle, 0.4);
-          p.moveIntensity = Math.min(p.moveIntensity + 0.2, 1);
+          if (Math.abs(speedX) > Math.abs(speedY)) p.dir = speedX > 0 ? 'right' : 'left';
+          else p.dir = speedY > 0 ? 'down' : 'up';
+          
+          const targetAngle = Math.atan2(speedY, speedX) + Math.PI / 2;
+          // Use dt-normalized rotation step for consistency at any refresh rate
+          p.currentAngle = lerpAngle(p.currentAngle, targetAngle, Math.min(1.0, 25 * dt)); 
+          p.moveIntensity = Math.min(p.moveIntensity + 10 * dt, 1);
         } else {
-          p.moveIntensity = Math.max(p.moveIntensity - 0.2, 0);
+          p.moveIntensity = Math.max(p.moveIntensity - 10 * dt, 0);
         }
       } else {
         p.vx = 0; p.vy = 0;
-        p.moveIntensity = Math.max(p.moveIntensity - 0.2, 0);
+        p.moveIntensity = Math.max(p.moveIntensity - 10 * dt, 0);
       }
 
       if (p.respawnGrace > 0) p.respawnGrace -= dt;
@@ -222,8 +236,9 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
         p.shieldTime -= dt;
         if (p.shieldTime <= 0) p.isShielded = false;
       }
-      cameraRef.current.x = lerp(cameraRef.current.x, p.x + 22, 0.15);
-      cameraRef.current.y = lerp(cameraRef.current.y, p.y + 22, 0.15);
+      // Tighter camera follow for better "snap" feeling
+      cameraRef.current.x = lerp(cameraRef.current.x, p.x + 22, Math.min(1.0, 15 * dt));
+      cameraRef.current.y = lerp(cameraRef.current.y, p.y + 22, Math.min(1.0, 15 * dt));
       
       const pCenterX = p.x + 22, pCenterY = p.y + 22;
       for (const pw of powerUpsRef.current) {
@@ -242,7 +257,7 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     }
 
     projectilesRef.current = projectilesRef.current.filter(pj => {
-      pj.x += pj.vx; pj.y += pj.vy;
+      pj.x += pj.vx * dt; pj.y += pj.vy * dt;
       if (isWall(pj.x, pj.y)) return false;
       for (const e of enemiesRef.current) {
         if (e.isDestroyed) continue;
@@ -265,17 +280,20 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
       const dist = Math.hypot(pCenterX - e.x, pCenterY - e.y);
       if (dist < 34 && !p.isShielded && p.respawnGrace <= 0) handleDeath();
       
-      e.frame += 0.1; e.rotation += 0.05;
+      e.frame += 6 * dt; e.rotation += 3 * dt;
       const targetX = pCenterX, targetY = pCenterY;
       const eDist = Math.hypot(targetX - e.x, targetY - e.y);
       
       if (eDist > 1) {
-        // Uniform enemy speed scaling: Capped to prevent "impossibly fast" behavior
-        const levelScaling = Math.min((levelData.id || 1) * 0.04, 0.4);
-        const baseS = ENEMY_SPEED_BASE * (0.8 + levelScaling);
+        // ENEMY SPEED NORMALIZATION:
+        // Capped at 160px/s (2.5 units/s) as requested. 
+        // No conditional 'Paid' logic applied here.
+        const baseS = ENEMY_SPEED_BASE; 
+        
         let dvx = ((targetX - e.x) / eDist) * baseS;
         let dvy = ((targetY - e.y) / eDist) * baseS;
 
+        // Separation force
         for (let j = 0; j < enemiesRef.current.length; j++) {
             if (i === j) continue;
             const other = enemiesRef.current[j];
@@ -283,20 +301,21 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
             const d = Math.hypot(e.x - other.x, e.y - other.y);
             if (d < 50) {
                 const force = (50 - d) / 50;
-                dvx += (e.x - other.x) / d * force * 2;
-                dvy += (e.y - other.y) / d * force * 2;
+                dvx += (e.x - other.x) / d * force * 150; 
+                dvy += (e.y - other.y) / d * force * 150;
             }
         }
         e.vx = dvx; e.vy = dvy;
       }
 
-      if (!checkCollision(e.x + e.vx - 22, e.y - 22, 44, 8)) e.x += e.vx;
-      if (!checkCollision(e.x - 22, e.y + e.vy - 22, 44, 8)) e.y += e.vy;
+      if (!checkCollision(e.x + e.vx * dt - 22, e.y - 22, 44, 8)) e.x += e.vx * dt;
+      if (!checkCollision(e.x - 22, e.y + e.vy * dt - 22, 44, 8)) e.y += e.vy * dt;
     }
 
     if (!p.isDead) {
       const pTx = Math.floor(pCenterX / TILE_SIZE), pTy = Math.floor(pCenterY / TILE_SIZE);
       if (canCheckAnswerRef.current && levelData.maze[pTy]?.[pTx] === 2) {
+        // FIX: Replaced undefined 'c' and 'r' with calculated tile coordinates 'pTx' and 'pTy'
         const targetOpt = levelData.options.find((o: any) => o.pos.x === pTx && o.pos.y === pTy);
         if (targetOpt) {
           canCheckAnswerRef.current = false;

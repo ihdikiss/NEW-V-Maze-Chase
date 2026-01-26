@@ -1,9 +1,10 @@
 
 export const TILE_SIZE = 64;
-export const PLAYER_SPEED = 4.8; // Increased from 3.0 for snappier response
-export const ENEMY_SPEED_BASE = 3.5; // Adjusted to maintain challenge with faster player
+// Values are now in pixels per second (Units/Sec)
+export const PLAYER_SPEED = 300; 
+export const ENEMY_SPEED_BASE = 160; 
 export const COLLISION_PADDING = 16;
-export const PROJECTILE_SPEED = 10.0; // Faster projectiles for better feel
+export const PROJECTILE_SPEED = 600; // Pixels per second
 
 export const MAZE_STYLE = {
   wallBody: '#0f0f2d',
