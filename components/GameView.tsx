@@ -55,9 +55,8 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   const [isGlitching, setIsGlitching] = useState(false);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
-  // Physics Normalization & Versioning
   useEffect(() => {
-    console.log('Game Version 1.0.5 - Balanced Speed');
+    console.log('Game Version 1.0.6 - Smart Cornering Restored');
   }, []);
 
   const getDynamicZoom = useCallback(() => {
@@ -78,7 +77,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     let diff = target - current;
     while (diff < -Math.PI) diff += Math.PI * 2;
     while (diff > Math.PI) diff -= Math.PI * 2;
-    // Step is normalized by delta time in the update loop to ensure consistency
     return current + diff * step;
   };
 
@@ -121,7 +119,8 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
       rotation: Math.random() * Math.PI * 2,
       isDestroyed: false,
       respawnTimer: 0,
-      isDormant: true
+      isDormant: true,
+      thinkTimer: 0 // For reaction delay
     }));
 
     powerUpsRef.current = [
@@ -180,7 +179,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
 
   const update = useCallback(() => {
     const now = performance.now();
-    // Use 1/60s as a fallback to prevent jumps, and clamp dt to 0.1s max
     let dt = (now - lastUpdateRef.current) / 1000;
     if (dt > 0.1) dt = 0.016; 
     lastUpdateRef.current = now;
@@ -200,14 +198,32 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
       
       if (inputX !== 0 || inputY !== 0) {
         const mag = Math.hypot(inputX, inputY);
-        // Normalized speed based on Delta Time
         const speedX = (inputX / mag) * PLAYER_SPEED;
         const speedY = (inputY / mag) * PLAYER_SPEED;
         
-        const dx = speedX * dt;
-        const dy = speedY * dt;
+        let dx = speedX * dt;
+        let dy = speedY * dt;
         
-        // Strict collision check
+        // --- Smart Cornering Logic ---
+        // Helps nudge the player towards corridor centers if they are slightly misaligned
+        const snapThreshold = 22; 
+        const centerX = Math.floor(p.x / TILE_SIZE) * TILE_SIZE + (TILE_SIZE - 44) / 2;
+        const centerY = Math.floor(p.y / TILE_SIZE) * TILE_SIZE + (TILE_SIZE - 44) / 2;
+
+        if (inputX !== 0 && inputY === 0) { // Horizontal Request
+           const offY = p.y - centerY;
+           if (Math.abs(offY) < snapThreshold && checkCollision(p.x + dx, p.y)) {
+              // If blocked horizontally, try to nudge toward vertical center to clear corner
+              p.y = lerp(p.y, centerY, 15 * dt);
+           }
+        } else if (inputY !== 0 && inputX === 0) { // Vertical Request
+           const offX = p.x - centerX;
+           if (Math.abs(offX) < snapThreshold && checkCollision(p.x, p.y + dy)) {
+              // If blocked vertically, try to nudge toward horizontal center
+              p.x = lerp(p.x, centerX, 15 * dt);
+           }
+        }
+
         const canMoveX = !checkCollision(p.x + dx, p.y);
         const canMoveY = !checkCollision(p.x, p.y + dy);
         
@@ -220,8 +236,7 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
           else p.dir = speedY > 0 ? 'down' : 'up';
           
           const targetAngle = Math.atan2(speedY, speedX) + Math.PI / 2;
-          // Use dt-normalized rotation step for consistency at any refresh rate
-          p.currentAngle = lerpAngle(p.currentAngle, targetAngle, Math.min(1.0, 25 * dt)); 
+          p.currentAngle = lerpAngle(p.currentAngle, targetAngle, Math.min(1.0, 20 * dt)); 
           p.moveIntensity = Math.min(p.moveIntensity + 10 * dt, 1);
         } else {
           p.moveIntensity = Math.max(p.moveIntensity - 10 * dt, 0);
@@ -236,22 +251,16 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
         p.shieldTime -= dt;
         if (p.shieldTime <= 0) p.isShielded = false;
       }
-      // Tighter camera follow for better "snap" feeling
-      cameraRef.current.x = lerp(cameraRef.current.x, p.x + 22, Math.min(1.0, 15 * dt));
-      cameraRef.current.y = lerp(cameraRef.current.y, p.y + 22, Math.min(1.0, 15 * dt));
+      cameraRef.current.x = lerp(cameraRef.current.x, p.x + 22, Math.min(1.0, 10 * dt));
+      cameraRef.current.y = lerp(cameraRef.current.y, p.y + 22, Math.min(1.0, 10 * dt));
       
       const pCenterX = p.x + 22, pCenterY = p.y + 22;
       for (const pw of powerUpsRef.current) {
           if (pw.picked) continue;
           if (Math.hypot(pCenterX - pw.x, pCenterY - pw.y) < 30) {
               pw.picked = true;
-              if (pw.type === 'shield') {
-                  p.isShielded = true;
-                  p.shieldTime = 8;
-              } else if (pw.type === 'weapon') {
-                  p.ammo += 3;
-                  if (onAmmoChange) onAmmoChange(p.ammo);
-              }
+              if (pw.type === 'shield') { p.isShielded = true; p.shieldTime = 8; }
+              else if (pw.type === 'weapon') { p.ammo += 3; if (onAmmoChange) onAmmoChange(p.ammo); }
           }
       }
     }
@@ -281,17 +290,28 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
       if (dist < 34 && !p.isShielded && p.respawnGrace <= 0) handleDeath();
       
       e.frame += 6 * dt; e.rotation += 3 * dt;
+      
+      if (e.thinkTimer > 0) {
+        e.thinkTimer -= dt;
+        continue; // Wait out the reaction delay
+      }
+
       const targetX = pCenterX, targetY = pCenterY;
       const eDist = Math.hypot(targetX - e.x, targetY - e.y);
       
       if (eDist > 1) {
-        // ENEMY SPEED NORMALIZATION:
-        // Capped at 160px/s (2.5 units/s) as requested. 
-        // No conditional 'Paid' logic applied here.
         const baseS = ENEMY_SPEED_BASE; 
-        
         let dvx = ((targetX - e.x) / eDist) * baseS;
         let dvy = ((targetY - e.y) / eDist) * baseS;
+
+        // Intersection / Turn logic: if the enemy has to change direction significantly
+        const newAngle = Math.atan2(dvy, dvx);
+        const oldAngle = Math.atan2(e.vy, e.vx);
+        const angleDiff = Math.abs(newAngle - oldAngle);
+        // If angle changed significantly (like taking a turn), add reaction delay
+        if (angleDiff > 0.5 && (e.vx !== 0 || e.vy !== 0)) {
+           e.thinkTimer = 0.15; // 0.15s Reaction Delay
+        }
 
         // Separation force
         for (let j = 0; j < enemiesRef.current.length; j++) {
@@ -308,14 +328,14 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
         e.vx = dvx; e.vy = dvy;
       }
 
-      if (!checkCollision(e.x + e.vx * dt - 22, e.y - 22, 44, 8)) e.x += e.vx * dt;
-      if (!checkCollision(e.x - 22, e.y + e.vy * dt - 22, 44, 8)) e.y += e.vy * dt;
+      // Enemy Collision + Movement
+      if (!checkCollision(e.x + e.vx * dt - 22, e.y - 22, 44, 10)) e.x += e.vx * dt;
+      if (!checkCollision(e.x - 22, e.y + e.vy * dt - 22, 44, 10)) e.y += e.vy * dt;
     }
 
     if (!p.isDead) {
       const pTx = Math.floor(pCenterX / TILE_SIZE), pTy = Math.floor(pCenterY / TILE_SIZE);
       if (canCheckAnswerRef.current && levelData.maze[pTy]?.[pTx] === 2) {
-        // FIX: Replaced undefined 'c' and 'r' with calculated tile coordinates 'pTx' and 'pTy'
         const targetOpt = levelData.options.find((o: any) => o.pos.x === pTx && o.pos.y === pTy);
         if (targetOpt) {
           canCheckAnswerRef.current = false;
@@ -347,18 +367,15 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
       coreGrd.addColorStop(0, '#ffffff'); coreGrd.addColorStop(0.5, '#00d2ff'); coreGrd.addColorStop(1, 'transparent');
       ctx.fillStyle = coreGrd; ctx.beginPath(); ctx.ellipse(offsetX, 12 + enginePower / 2, 4, enginePower, 0, 0, Math.PI * 2); ctx.fill();
     });
-    ctx.shadowBlur = 12; ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
     const chassisGrd = ctx.createLinearGradient(-22, 0, 22, 0);
     chassisGrd.addColorStop(0, '#1a1d23'); chassisGrd.addColorStop(0.5, '#2f3542'); chassisGrd.addColorStop(1, '#1a1d23');
     ctx.fillStyle = chassisGrd; ctx.beginPath(); ctx.moveTo(0, -28); ctx.lineTo(26, 12); ctx.lineTo(12, 18); ctx.lineTo(0, 10); ctx.lineTo(-12, 18); ctx.lineTo(-26, 12); ctx.closePath(); ctx.fill();
-    ctx.shadowBlur = 0;
     const armorGrd = ctx.createLinearGradient(-15, 0, 15, 0);
     armorGrd.addColorStop(0, '#d1d8e0'); armorGrd.addColorStop(0.5, '#ffffff'); armorGrd.addColorStop(1, '#d1d8e0');
     ctx.fillStyle = armorGrd; ctx.beginPath(); ctx.moveTo(0, -26); ctx.lineTo(16, 8); ctx.lineTo(0, 2); ctx.lineTo(-16, 8); ctx.closePath(); ctx.fill();
     const canopyGrd = ctx.createRadialGradient(0, -10, 2, 0, -10, 10);
     canopyGrd.addColorStop(0, '#74b9ff'); canopyGrd.addColorStop(0.7, '#0984e3'); canopyGrd.addColorStop(1, '#1e3799');
     ctx.fillStyle = canopyGrd; ctx.beginPath(); ctx.ellipse(0, -10, 6, 12, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'; ctx.beginPath(); ctx.ellipse(-2, -14, 2, 5, -0.2, 0, Math.PI * 2); ctx.fill();
     const neonPulse = (Math.sin(time / 200) + 1) / 2;
     ctx.fillStyle = `rgba(0, 255, 255, ${0.4 + neonPulse * 0.6})`;
     ctx.beginPath(); ctx.arc(-22, 10, 2, 0, Math.PI * 2); ctx.fill();
@@ -410,12 +427,10 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     ctx.translate(pw.x, pw.y);
     ctx.shadowBlur = 15 + pulse * 10;
     ctx.shadowColor = pw.type === 'shield' ? '#00f2ff' : '#ff9f43';
-    
     ctx.globalAlpha = 0.2 + pulse * 0.2;
     ctx.fillStyle = pw.type === 'shield' ? '#00f2ff' : '#ff9f43';
     ctx.beginPath(); ctx.arc(0, 0, 20 + pulse * 5, 0, Math.PI * 2); ctx.fill();
     ctx.globalAlpha = 1;
-
     if (pw.type === 'shield') {
         ctx.fillStyle = '#00f2ff';
         ctx.beginPath();
@@ -479,9 +494,8 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
       for (let c = 0; c < levelData.maze[0].length; c++) {
         const sx = c * TILE_SIZE, sy = r * TILE_SIZE;
         const cell = levelData.maze[r][c];
-        if (cell === 1) {
-          drawWallBlock(ctx, sx, sy, c, r); 
-        } else if (cell === 2) {
+        if (cell === 1) { drawWallBlock(ctx, sx, sy, c, r); }
+        else if (cell === 2) {
           ctx.fillStyle = "rgba(0, 210, 255, 0.1)"; ctx.fillRect(sx + 4, sy + 4, TILE_SIZE - 8, TILE_SIZE - 8);
           ctx.strokeStyle = "rgba(0, 210, 255, 0.3)"; ctx.lineWidth = 1; ctx.strokeRect(sx + 4, sy + 4, TILE_SIZE - 8, TILE_SIZE - 8);
           const opt = levelData.options.find((o: any) => o.pos.x === c && o.pos.y === r);

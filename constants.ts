@@ -1,7 +1,8 @@
 
 export const TILE_SIZE = 64;
 // Values are now in pixels per second (Units/Sec)
-export const PLAYER_SPEED = 300; 
+// Calibrated for fair but challenging pursuit
+export const PLAYER_SPEED = 180; 
 export const ENEMY_SPEED_BASE = 160; 
 export const COLLISION_PADDING = 16;
 export const PROJECTILE_SPEED = 600; // Pixels per second
