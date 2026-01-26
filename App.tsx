@@ -320,16 +320,17 @@ const App: React.FC = () => {
   const mapQuestionsToLevels = (questions: any[]) => {
     const mapped = questions.map((q, idx) => {
       const template = HARDCODED_LEVELS[idx % HARDCODED_LEVELS.length];
+      if (!template) return HARDCODED_LEVELS[0];
       return {
         ...template, id: q.id, question: q.question_text,
         options: [
-          { text: q.option_a, isCorrect: q.correct_option === 'A', pos: template.options[0].pos },
-          { text: q.option_b, isCorrect: q.correct_option === 'B', pos: template.options[1].pos },
-          { text: q.option_c, isCorrect: q.correct_option === 'C', pos: template.options[2]?.pos || {x: 7, y: 7} },
+          { text: q.option_a, isCorrect: q.correct_option === 'A', pos: template.options[0]?.pos || {x: 1, y: 1} },
+          { text: q.option_b, isCorrect: q.correct_option === 'B', pos: template.options[1]?.pos || {x: 13, y: 1} },
+          { text: q.option_c, isCorrect: q.correct_option === 'C', pos: template.options[2]?.pos || {x: 7, y: 9} },
         ].filter(opt => opt.text)
       };
     });
-    setActiveLevels(mapped);
+    setActiveLevels(mapped.length > 0 ? mapped : HARDCODED_LEVELS);
   };
 
   const syncQuestions = async (target: string | null) => {
@@ -467,7 +468,6 @@ const App: React.FC = () => {
               onCameraModeChange={(mode) => { setCameraMode(mode); setIsSettingsOpen(false); }}
             />
           </div>
-          {/* CRITICAL FIX: Removed h-full from the flex-1 container to prevent overflow layout collapse */}
           <div className="flex-1 w-full relative overflow-hidden min-h-0">
             <GameView 
               levelData={activeLevels[levelIndex]} 
@@ -480,10 +480,27 @@ const App: React.FC = () => {
                 
                 setTimeout(() => { 
                   setLastFeedback(null); 
-                  if (levelIndex < activeLevels.length - 1) { 
-                    setLevelIndex(i => i + 1); 
-                    setGameState(GameState.BRIEFING); 
-                  } else setGameState(GameState.RESULT);
+                  
+                  if (newCorrectCount >= 3) {
+                    setIsTransitioning(true);
+                    setTimeout(() => {
+                      setIsTransitioning(false);
+                      setCorrectAnswersCount(0);
+                      if (levelIndex < activeLevels.length - 1) { 
+                        setLevelIndex(i => i + 1); 
+                        setGameState(GameState.BRIEFING); 
+                      } else {
+                        setGameState(GameState.RESULT);
+                      }
+                    }, 4000); 
+                  } else {
+                    if (levelIndex < activeLevels.length - 1) { 
+                      setLevelIndex(i => i + 1); 
+                      setGameState(GameState.BRIEFING); 
+                    } else {
+                      setGameState(GameState.RESULT);
+                    }
+                  }
                 }, 2000); 
               }} 
               onIncorrect={() => { setLastFeedback({ type: 'fail', message: 'WRONG SECTOR' }); setTimeout(() => setLastFeedback(null), 1500); }} 

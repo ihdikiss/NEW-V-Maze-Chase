@@ -56,11 +56,11 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
   useEffect(() => {
-    console.log('Game Version 1.0.8 - Layout & Cornering Fixed');
+    console.log('Game Engine v1.1.0 - NaN Prevention & Rendering Fix Applied');
   }, []);
 
   const getDynamicZoom = useCallback(() => {
-    if (!dimensions.width || !dimensions.height || !levelData) return 1.0;
+    if (!dimensions.width || !dimensions.height || !levelData || !levelData.maze || !levelData.maze[0]) return 1.0;
     const worldW = levelData.maze[0].length * TILE_SIZE;
     const worldH = levelData.maze.length * TILE_SIZE;
     const scaleX = (dimensions.width * 0.95) / worldW;
@@ -81,9 +81,9 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   };
 
   const getMazeValue = (tx: number, ty: number) => {
-    if (!levelData) return 1;
+    if (!levelData || !levelData.maze) return 1;
     const maze = levelData.maze;
-    if (ty < 0 || ty >= maze.length || tx < 0 || tx >= maze[0].length) return 1;
+    if (isNaN(ty) || isNaN(tx) || ty < 0 || ty >= maze.length || tx < 0 || tx >= maze[0].length) return 1;
     return maze[ty][tx];
   };
 
@@ -94,9 +94,11 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   };
 
   const initLevel = useCallback(() => {
-    if (!levelData) return;
+    if (!levelData || !levelData.startPos || !levelData.maze) return;
+    
     const startX = levelData.startPos.x * TILE_SIZE + (TILE_SIZE - 44) / 2;
     const startY = levelData.startPos.y * TILE_SIZE + (TILE_SIZE - 44) / 2;
+    
     playerRef.current.x = startX;
     playerRef.current.y = startY;
     playerRef.current.vx = 0;
@@ -106,24 +108,51 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     playerRef.current.currentAngle = 0;
     playerRef.current.moveIntensity = 0;
     playerRef.current.ammo = 0;
+    
     if (onAmmoChange) onAmmoChange(0);
     currentMoveVec.current = { x: 0, y: 0 };
     cameraRef.current.x = startX + 22;
     cameraRef.current.y = startY + 22;
 
-    enemiesRef.current = levelData.enemies.map((e: any, i: number) => ({
-      ...e,
-      x: e.x * TILE_SIZE + 32,
-      y: e.y * TILE_SIZE + 32,
-      vx: 0, vy: 0,
-      id: `enemy-${i}`,
-      frame: Math.random() * 10,
-      rotation: Math.random() * Math.PI * 2,
-      isDestroyed: false,
-      respawnTimer: 0,
-      isDormant: true,
-      thinkTimer: 0
-    }));
+    const playerTx = levelData.startPos.x;
+    const playerTy = levelData.startPos.y;
+
+    enemiesRef.current = (levelData.enemies || []).map((e: any, i: number) => {
+      let finalTx = e.x;
+      let finalTy = e.y;
+      const distFromPlayer = Math.hypot(finalTx - playerTx, finalTy - playerTy);
+      
+      if (distFromPlayer < 5) {
+        const potentialSpawns = [];
+        const maze = levelData.maze;
+        for (let r = 0; r < maze.length; r++) {
+          for (let c = 0; c < maze[0].length; c++) {
+            if (maze[r][c] === 0 && Math.hypot(c - playerTx, r - playerTy) >= 7) {
+              potentialSpawns.push({ x: c, y: r });
+            }
+          }
+        }
+        if (potentialSpawns.length > 0) {
+          const pick = potentialSpawns[Math.floor(Math.random() * potentialSpawns.length)];
+          finalTx = pick.x;
+          finalTy = pick.y;
+        }
+      }
+
+      return {
+        ...e,
+        x: finalTx * TILE_SIZE + 32,
+        y: finalTy * TILE_SIZE + 32,
+        vx: 0, vy: 0,
+        id: `enemy-${i}`,
+        frame: Math.random() * 10,
+        rotation: Math.random() * Math.PI * 2,
+        isDestroyed: false,
+        respawnTimer: 0,
+        isDormant: true,
+        thinkTimer: 1.5
+      };
+    });
 
     powerUpsRef.current = [
       { x: 3 * TILE_SIZE + 32, y: 3 * TILE_SIZE + 32, type: 'shield', picked: false },
@@ -138,11 +167,9 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   useEffect(() => {
     const updateSize = () => {
       if (containerRef.current) {
-        const w = containerRef.current.clientWidth || window.innerWidth;
-        const h = containerRef.current.clientHeight || window.innerHeight;
-        if (w > 0 && h > 0) {
-          setDimensions({ width: w, height: h });
-        }
+        const w = containerRef.current.clientWidth;
+        const h = containerRef.current.clientHeight;
+        if (w > 0 && h > 0) setDimensions({ width: w, height: h });
       }
     };
     updateSize();
@@ -155,6 +182,7 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   }, []);
 
   const checkCollision = (nx: number, ny: number, size: number = 44, padding: number = 14) => {
+    if (isNaN(nx) || isNaN(ny)) return true;
     const points = [
       { x: nx + padding, y: ny + padding },
       { x: nx + size - padding, y: ny + padding },
@@ -188,10 +216,10 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   };
 
   const update = useCallback(() => {
-    if (!levelData) return;
+    if (!levelData || !levelData.maze) return;
     const now = performance.now();
     let dt = (now - lastUpdateRef.current) / 1000;
-    if (dt > 0.1) dt = 0.016; 
+    if (isNaN(dt) || dt <= 0 || dt > 0.1) dt = 0.016; 
     lastUpdateRef.current = now;
 
     if (isTransitioning) {
@@ -204,6 +232,9 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
 
     const p = playerRef.current;
     if (!p.isDead) {
+      // Guard against propagation of NaN coordinates
+      if (isNaN(p.x) || isNaN(p.y)) { initLevel(); return; }
+
       const inputX = currentMoveVec.current.x;
       const inputY = currentMoveVec.current.y;
       
@@ -215,7 +246,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
         let dx = speedX * dt;
         let dy = speedY * dt;
         
-        // Smart Cornering Logic
         const snapThreshold = 22; 
         const centerX = Math.floor(p.x / TILE_SIZE) * TILE_SIZE + (TILE_SIZE - 44) / 2;
         const centerY = Math.floor(p.y / TILE_SIZE) * TILE_SIZE + (TILE_SIZE - 44) / 2;
@@ -333,9 +363,10 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     }
 
     if (!p.isDead) {
-      const pTx = Math.floor(pCenterX / TILE_SIZE), pTy = Math.floor(pCenterY / TILE_SIZE);
-      if (canCheckAnswerRef.current && levelData.maze[pTy]?.[pTx] === 2) {
-        const targetOpt = levelData.options.find((o: any) => o.pos.x === pTx && o.pos.y === pTy);
+      const pTx = Math.floor(pCenterX / TILE_SIZE);
+      const pTy = Math.floor(pCenterY / TILE_SIZE);
+      if (!isNaN(pTx) && !isNaN(pTy) && canCheckAnswerRef.current && getMazeValue(pTx, pTy) === 2) {
+        const targetOpt = (levelData.options || []).find((o: any) => o.pos.x === pTx && o.pos.y === pTy);
         if (targetOpt) {
           canCheckAnswerRef.current = false;
           if (targetOpt.isCorrect) onCorrect(); else onIncorrect();
@@ -345,10 +376,11 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     }
     draw();
     rafRef.current = requestAnimationFrame(update);
-  }, [levelData, onCorrect, onIncorrect, onEnemyHit, dimensions, isTransitioning, onAmmoChange]);
+  }, [levelData, onCorrect, onIncorrect, onEnemyHit, dimensions, isTransitioning, onAmmoChange, initLevel]);
 
   const drawPlayer = (ctx: CanvasRenderingContext2D) => {
     const p = playerRef.current;
+    if (isNaN(p.x) || isNaN(p.y)) return;
     if (p.isDead && Math.sin(performance.now() / 50) > 0) return;
     const time = performance.now();
     ctx.save();
@@ -478,13 +510,17 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   };
 
   const draw = () => {
-    const canvas = canvasRef.current; if (!canvas || !levelData) return;
+    const canvas = canvasRef.current; if (!canvas || !levelData || !levelData.maze) return;
     const ctx = canvas.getContext('2d'); if (!ctx) return;
-    const { x: camX, y: camY } = cameraRef.current;
-    const zoomVal = getDynamicZoom();
+    
     const w = canvas.width || dimensions.width || 800;
     const h = canvas.height || dimensions.height || 600;
+    const { x: camX, y: camY } = cameraRef.current;
+    
+    // Safety check for NaN values in transform
+    if (isNaN(camX) || isNaN(camY) || isNaN(w) || isNaN(h)) return;
 
+    const zoomVal = getDynamicZoom();
     ctx.save();
     ctx.fillStyle = MAZE_STYLE.floor;
     ctx.fillRect(0, 0, w, h);
@@ -492,6 +528,7 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     ctx.scale(zoomVal, zoomVal);
     if (screenShake > 0) ctx.translate(Math.random()*screenShake - screenShake/2, Math.random()*screenShake - screenShake/2);
     ctx.translate(-camX, -camY);
+    
     for (let r = 0; r < levelData.maze.length; r++) {
       for (let c = 0; c < levelData.maze[0].length; c++) {
         const sx = c * TILE_SIZE, sy = r * TILE_SIZE;
@@ -500,7 +537,7 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
         else if (cell === 2) {
           ctx.fillStyle = "rgba(0, 210, 255, 0.1)"; ctx.fillRect(sx + 4, sy + 4, TILE_SIZE - 8, TILE_SIZE - 8);
           ctx.strokeStyle = "rgba(0, 210, 255, 0.3)"; ctx.lineWidth = 1; ctx.strokeRect(sx + 4, sy + 4, TILE_SIZE - 8, TILE_SIZE - 8);
-          const opt = levelData.options.find((o: any) => o.pos.x === c && o.pos.y === r);
+          const opt = (levelData.options || []).find((o: any) => o.pos.x === c && o.pos.y === r);
           if (opt) { ctx.fillStyle = "white"; ctx.font = "bold 14px Orbitron"; ctx.textAlign = "center"; ctx.fillText(opt.text, sx + TILE_SIZE / 2, sy + TILE_SIZE / 2 + 5); }
         }
       }
