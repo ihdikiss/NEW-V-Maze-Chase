@@ -10,7 +10,6 @@ import { supabase } from './lib/supabase';
 
 /**
  * COMPONENT: AdminDashboard
- * تم تحسين منطق المزامنة لضمان عدم اختفاء الأسئلة بعد إضافتها.
  */
 const AdminDashboard: React.FC = () => {
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
@@ -29,7 +28,6 @@ const AdminDashboard: React.FC = () => {
     correct_option: 'A'
   });
 
-  // دالة لجلب البيانات الأساسية للقائمة الجانبية
   const fetchSidebarData = async () => {
     try {
       const { data: qData } = await supabase.from('custom_questions').select('*');
@@ -42,9 +40,7 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  // دالة لجلب الأسئلة الخاصة بالقطاع المحدد (عام أو مستخدم معين)
   const fetchTargetQuestions = useCallback(async () => {
-    // لا نضع loading هنا لكي لا تومض الشاشة أثناء التحديث بعد الإضافة
     try {
       const cleanEmail = activeAdminEmail ? activeAdminEmail.trim().toLowerCase() : null;
       let query = supabase.from('custom_questions').select('*').order('created_at', { ascending: false });
@@ -85,7 +81,6 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  // قائمة المستخدمين الموحدة (أحرف صغيرة دائماً)
   const userList = useMemo(() => {
     const fromQuestions = allQuestions.map(q => String(q.assigned_to_email || '').trim().toLowerCase()).filter(Boolean);
     const fromProfiles = registeredUsers.map(p => String(p.email || '').trim().toLowerCase()).filter(Boolean);
@@ -97,11 +92,9 @@ const AdminDashboard: React.FC = () => {
     if(!adminFormData.question_text) return;
     
     setLoading(true);
-    // توحيد الإيميل قبل الإرسال والفلترة
     const currentTarget = activeAdminEmail ? activeAdminEmail.trim().toLowerCase() : null;
     
     try {
-      // نطلب من سوبابيز إرجاع البيانات المدرجة حديثاً باستخدام .select()
       const { data: insertedData, error } = await supabase
         .from('custom_questions')
         .insert([{ 
@@ -114,7 +107,6 @@ const AdminDashboard: React.FC = () => {
       
       setAdminStatus({ type: 'success', msg: 'تم الحفظ والمزامنة بنجاح!' });
       
-      // تحديث الواجهة فوراً بالعنصر الجديد لضمان عدم الاختفاء (Optimistic Update)
       if (insertedData && insertedData.length > 0) {
         const newQ = insertedData[0];
         setAdminQuestions(prev => [newQ, ...prev]);
@@ -124,7 +116,6 @@ const AdminDashboard: React.FC = () => {
         setAdminFormData({ question_text: '', option_a: '', option_b: '', option_c: '', correct_option: 'A' });
       }
       
-      // مزامنة البيانات من الخادم في الخلفية
       fetchSidebarData();
       fetchTargetQuestions();
       
@@ -401,7 +392,6 @@ const App: React.FC = () => {
 
       {gameState === GameState.LANDING && (
         <div className="relative z-20 h-full w-full flex flex-col items-center justify-center p-[4vh] text-center animate-fade-in pointer-events-auto overflow-hidden">
-          {/* تم حذف شعار العلامة التجارية الكبير من الجهة اليمنى بناءً على طلب المستخدم */}
           <div className="flex flex-col items-center justify-center w-full max-w-2xl">
             <div className="mb-8 relative">
                <div className="absolute -inset-10 bg-cyan-500/10 blur-3xl rounded-full"></div>
@@ -460,22 +450,25 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {gameState === GameState.BRIEFING && <MissionBriefing level={levelIndex + 1} question={activeLevels[levelIndex].question} onEngage={() => setGameState(GameState.PLAYING)} />}
+      {gameState === GameState.BRIEFING && <MissionBriefing level={levelIndex + 1} question={activeLevels[levelIndex]?.question || "LOADING..."} onEngage={() => setGameState(GameState.PLAYING)} />}
 
       {gameState === GameState.PLAYING && (
-        <div className="relative w-full h-screen flex flex-col z-10 pointer-events-auto overflow-hidden">
-          <HUD 
-            score={score} 
-            lives={lives} 
-            level={levelIndex + 1} 
-            question={activeLevels[levelIndex].question} 
-            ammo={ammo} 
-            onToggleSettings={() => setIsSettingsOpen(!isSettingsOpen)} 
-            isSettingsOpen={isSettingsOpen} 
-            cameraMode={cameraMode}
-            onCameraModeChange={(mode) => { setCameraMode(mode); setIsSettingsOpen(false); }}
-          />
-          <div className="flex-1 w-full relative overflow-hidden">
+        <div className="relative w-full h-full flex flex-col z-10 pointer-events-auto overflow-hidden">
+          <div className="shrink-0">
+            <HUD 
+              score={score} 
+              lives={lives} 
+              level={levelIndex + 1} 
+              question={activeLevels[levelIndex]?.question || "..."} 
+              ammo={ammo} 
+              onToggleSettings={() => setIsSettingsOpen(!isSettingsOpen)} 
+              isSettingsOpen={isSettingsOpen} 
+              cameraMode={cameraMode}
+              onCameraModeChange={(mode) => { setCameraMode(mode); setIsSettingsOpen(false); }}
+            />
+          </div>
+          {/* CRITICAL FIX: Removed h-full from the flex-1 container to prevent overflow layout collapse */}
+          <div className="flex-1 w-full relative overflow-hidden min-h-0">
             <GameView 
               levelData={activeLevels[levelIndex]} 
               isTransitioning={isTransitioning}
@@ -487,22 +480,10 @@ const App: React.FC = () => {
                 
                 setTimeout(() => { 
                   setLastFeedback(null); 
-                  if (newCorrectCount === 3) {
-                    setIsTransitioning(true);
-                    setTimeout(() => {
-                      setIsTransitioning(false);
-                      setCorrectAnswersCount(0);
-                      if (levelIndex < activeLevels.length - 1) { 
-                        setLevelIndex(i => i + 1); 
-                        setGameState(GameState.BRIEFING); 
-                      } else setGameState(GameState.RESULT);
-                    }, 4000);
-                  } else {
-                    if (levelIndex < activeLevels.length - 1) { 
-                      setLevelIndex(i => i + 1); 
-                      setGameState(GameState.BRIEFING); 
-                    } else setGameState(GameState.RESULT);
-                  }
+                  if (levelIndex < activeLevels.length - 1) { 
+                    setLevelIndex(i => i + 1); 
+                    setGameState(GameState.BRIEFING); 
+                  } else setGameState(GameState.RESULT);
                 }, 2000); 
               }} 
               onIncorrect={() => { setLastFeedback({ type: 'fail', message: 'WRONG SECTOR' }); setTimeout(() => setLastFeedback(null), 1500); }} 

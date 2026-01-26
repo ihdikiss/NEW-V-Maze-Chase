@@ -56,11 +56,11 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
   useEffect(() => {
-    console.log('Game Version 1.0.6 - Smart Cornering Restored');
+    console.log('Game Version 1.0.8 - Layout & Cornering Fixed');
   }, []);
 
   const getDynamicZoom = useCallback(() => {
-    if (!dimensions.width || !dimensions.height) return 1.0;
+    if (!dimensions.width || !dimensions.height || !levelData) return 1.0;
     const worldW = levelData.maze[0].length * TILE_SIZE;
     const worldH = levelData.maze.length * TILE_SIZE;
     const scaleX = (dimensions.width * 0.95) / worldW;
@@ -69,7 +69,7 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     if (cameraMode === CameraMode.FIELD) return baseFit;
     if (cameraMode === CameraMode.MOBILE) return Math.max(baseFit, 0.6);
     return dimensions.width < 1024 ? Math.max(baseFit, 0.7) : 1.0;
-  }, [dimensions, levelData.maze, cameraMode]);
+  }, [dimensions, levelData, cameraMode]);
 
   const lerp = (start: number, end: number, amt: number) => (1 - amt) * start + amt * end;
   
@@ -81,6 +81,7 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   };
 
   const getMazeValue = (tx: number, ty: number) => {
+    if (!levelData) return 1;
     const maze = levelData.maze;
     if (ty < 0 || ty >= maze.length || tx < 0 || tx >= maze[0].length) return 1;
     return maze[ty][tx];
@@ -93,6 +94,7 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   };
 
   const initLevel = useCallback(() => {
+    if (!levelData) return;
     const startX = levelData.startPos.x * TILE_SIZE + (TILE_SIZE - 44) / 2;
     const startY = levelData.startPos.y * TILE_SIZE + (TILE_SIZE - 44) / 2;
     playerRef.current.x = startX;
@@ -120,7 +122,7 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
       isDestroyed: false,
       respawnTimer: 0,
       isDormant: true,
-      thinkTimer: 0 // For reaction delay
+      thinkTimer: 0
     }));
 
     powerUpsRef.current = [
@@ -136,12 +138,20 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   useEffect(() => {
     const updateSize = () => {
       if (containerRef.current) {
-        setDimensions({ width: containerRef.current.clientWidth, height: containerRef.current.clientHeight });
+        const w = containerRef.current.clientWidth || window.innerWidth;
+        const h = containerRef.current.clientHeight || window.innerHeight;
+        if (w > 0 && h > 0) {
+          setDimensions({ width: w, height: h });
+        }
       }
     };
     updateSize();
+    const timer = setTimeout(updateSize, 100);
     window.addEventListener('resize', updateSize);
-    return () => window.removeEventListener('resize', updateSize);
+    return () => {
+      window.removeEventListener('resize', updateSize);
+      clearTimeout(timer);
+    };
   }, []);
 
   const checkCollision = (nx: number, ny: number, size: number = 44, padding: number = 14) => {
@@ -178,6 +188,7 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   };
 
   const update = useCallback(() => {
+    if (!levelData) return;
     const now = performance.now();
     let dt = (now - lastUpdateRef.current) / 1000;
     if (dt > 0.1) dt = 0.016; 
@@ -204,22 +215,19 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
         let dx = speedX * dt;
         let dy = speedY * dt;
         
-        // --- Smart Cornering Logic ---
-        // Helps nudge the player towards corridor centers if they are slightly misaligned
+        // Smart Cornering Logic
         const snapThreshold = 22; 
         const centerX = Math.floor(p.x / TILE_SIZE) * TILE_SIZE + (TILE_SIZE - 44) / 2;
         const centerY = Math.floor(p.y / TILE_SIZE) * TILE_SIZE + (TILE_SIZE - 44) / 2;
 
-        if (inputX !== 0 && inputY === 0) { // Horizontal Request
+        if (inputX !== 0 && inputY === 0) {
            const offY = p.y - centerY;
            if (Math.abs(offY) < snapThreshold && checkCollision(p.x + dx, p.y)) {
-              // If blocked horizontally, try to nudge toward vertical center to clear corner
               p.y = lerp(p.y, centerY, 15 * dt);
            }
-        } else if (inputY !== 0 && inputX === 0) { // Vertical Request
+        } else if (inputY !== 0 && inputX === 0) {
            const offX = p.x - centerX;
            if (Math.abs(offX) < snapThreshold && checkCollision(p.x, p.y + dy)) {
-              // If blocked vertically, try to nudge toward horizontal center
               p.x = lerp(p.x, centerX, 15 * dt);
            }
         }
@@ -291,10 +299,7 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
       
       e.frame += 6 * dt; e.rotation += 3 * dt;
       
-      if (e.thinkTimer > 0) {
-        e.thinkTimer -= dt;
-        continue; // Wait out the reaction delay
-      }
+      if (e.thinkTimer > 0) { e.thinkTimer -= dt; continue; }
 
       const targetX = pCenterX, targetY = pCenterY;
       const eDist = Math.hypot(targetX - e.x, targetY - e.y);
@@ -304,16 +309,11 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
         let dvx = ((targetX - e.x) / eDist) * baseS;
         let dvy = ((targetY - e.y) / eDist) * baseS;
 
-        // Intersection / Turn logic: if the enemy has to change direction significantly
         const newAngle = Math.atan2(dvy, dvx);
         const oldAngle = Math.atan2(e.vy, e.vx);
         const angleDiff = Math.abs(newAngle - oldAngle);
-        // If angle changed significantly (like taking a turn), add reaction delay
-        if (angleDiff > 0.5 && (e.vx !== 0 || e.vy !== 0)) {
-           e.thinkTimer = 0.15; // 0.15s Reaction Delay
-        }
+        if (angleDiff > 0.5 && (e.vx !== 0 || e.vy !== 0)) { e.thinkTimer = 0.15; }
 
-        // Separation force
         for (let j = 0; j < enemiesRef.current.length; j++) {
             if (i === j) continue;
             const other = enemiesRef.current[j];
@@ -328,7 +328,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
         e.vx = dvx; e.vy = dvy;
       }
 
-      // Enemy Collision + Movement
       if (!checkCollision(e.x + e.vx * dt - 22, e.y - 22, 44, 10)) e.x += e.vx * dt;
       if (!checkCollision(e.x - 22, e.y + e.vy * dt - 22, 44, 10)) e.y += e.vy * dt;
     }
@@ -479,14 +478,17 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   };
 
   const draw = () => {
-    const canvas = canvasRef.current; if (!canvas || dimensions.width === 0) return;
+    const canvas = canvasRef.current; if (!canvas || !levelData) return;
     const ctx = canvas.getContext('2d'); if (!ctx) return;
     const { x: camX, y: camY } = cameraRef.current;
     const zoomVal = getDynamicZoom();
+    const w = canvas.width || dimensions.width || 800;
+    const h = canvas.height || dimensions.height || 600;
+
     ctx.save();
     ctx.fillStyle = MAZE_STYLE.floor;
-    ctx.fillRect(0, 0, dimensions.width, dimensions.height);
-    ctx.translate(dimensions.width / 2, dimensions.height / 2);
+    ctx.fillRect(0, 0, w, h);
+    ctx.translate(w / 2, h / 2);
     ctx.scale(zoomVal, zoomVal);
     if (screenShake > 0) ctx.translate(Math.random()*screenShake - screenShake/2, Math.random()*screenShake - screenShake/2);
     ctx.translate(-camX, -camY);
@@ -512,7 +514,7 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
         ctx.beginPath(); ctx.arc(exp.x, exp.y, 40 * exp.life, 0, Math.PI * 2); ctx.fill();
     }
     ctx.restore();
-    if (isGlitching) { ctx.fillStyle = 'rgba(255, 0, 0, 0.1)'; ctx.fillRect(0, 0, dimensions.width, dimensions.height); }
+    if (isGlitching) { ctx.fillStyle = 'rgba(255, 0, 0, 0.1)'; ctx.fillRect(0, 0, w, h); }
   };
 
   const handleMobileTouch = (key: string, start: boolean) => {
@@ -538,9 +540,15 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   }, [update, isTransitioning]);
 
   return (
-    <div ref={containerRef} className="absolute inset-0 w-full h-full flex items-center justify-center overflow-hidden bg-[#050510]">
-      <canvas ref={canvasRef} width={dimensions.width} height={dimensions.height} className="w-full h-full block" />
-      {dimensions.width < 1024 && (
+    <div ref={containerRef} className="absolute inset-0 w-full h-full flex items-center justify-center overflow-hidden bg-[#050510] z-0">
+      <canvas 
+        ref={canvasRef} 
+        width={dimensions.width || 800} 
+        height={dimensions.height || 600} 
+        className="w-full h-full block opacity-100 visible" 
+        style={{ display: 'block', visibility: 'visible', opacity: 1 }}
+      />
+      {dimensions.width < 1024 && dimensions.width > 0 && (
         <div className="absolute inset-0 z-30 pointer-events-none select-none">
           <div className="absolute bottom-10 left-10 w-36 h-36 pointer-events-auto">
             <div className="relative w-full h-full flex items-center justify-center rounded-full border-2 border-white/20 bg-white/5 backdrop-blur-[1px] opacity-40 active:opacity-80 transition-all">
