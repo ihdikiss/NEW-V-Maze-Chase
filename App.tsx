@@ -394,29 +394,26 @@ const App: React.FC = () => {
       {gameState === GameState.LANDING && (
         <div className="relative z-20 h-full w-full flex flex-col items-center justify-center p-[4vh] text-center animate-fade-in pointer-events-auto overflow-hidden">
           <div className="flex flex-col items-center justify-center w-full max-w-2xl">
-            <div className="mb-8 relative">
-               <div className="absolute -inset-10 bg-cyan-500/10 blur-3xl rounded-full"></div>
-               <h1 className="text-[clamp(2.5rem,8vh,6rem)] font-black orbitron text-white tracking-tighter drop-shadow-[0_0_20px_rgba(0,210,255,0.3)]">
-                 9RA <span className="text-emerald-400">O</span> NCHT
-               </h1>
-            </div>
-            
-            <h2 className="text-[clamp(1.2rem,3vh,2rem)] font-bold text-gray-300 mb-[6vh] leading-relaxed max-w-xl">
+            <h2 className="text-[clamp(1.2rem,3vh,2rem)] font-bold text-gray-300 mb-[10vh] leading-relaxed max-w-xl">
               أول منصة تعليمية تجمع بين المغامرة والتحصيل الدراسي
             </h2>
             
-            <div className="flex flex-col gap-[3vh] w-full max-w-md">
+            <div className="flex flex-col items-center justify-center gap-[4vh] w-full">
+              {/* Primary Central Button */}
               <button 
                 onClick={() => setGameState(GameState.INTRO)} 
-                className="py-[2vh] px-10 bg-white/5 border border-white/10 rounded-2xl text-[clamp(1rem,2.2vh,1.4rem)] font-bold hover:bg-white/10 transition-all active:scale-95 shadow-lg text-white"
+                className="group relative py-8 px-16 bg-cyan-600 rounded-[2.5rem] font-black orbitron text-3xl shadow-[0_0_40px_rgba(0,210,255,0.5)] hover:bg-cyan-500 transition-all active:scale-95 text-white animate-[pulse_2s_infinite]"
               >
-                النسخة المجانية
+                START MISSION
+                <div className="absolute inset-0 rounded-[2.5rem] bg-cyan-400/30 blur-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
               </button>
+              
+              {/* Discrete Premium Entrance */}
               <button 
                 onClick={() => setShowAuthModal(true)} 
-                className="py-[2vh] px-10 bg-gradient-to-r from-cyan-600 to-blue-700 rounded-2xl text-[clamp(1rem,2.2vh,1.4rem)] font-black hover:from-cyan-500 hover:to-blue-600 transition-all active:scale-95 shadow-[0_0_40px_rgba(8,145,178,0.5)] text-white"
+                className="mt-8 text-cyan-400/40 hover:text-cyan-400 text-[10px] font-black orbitron tracking-[0.5em] transition-all"
               >
-                النسخة المدفوعة
+                PREMIUM NEURAL LINK
               </button>
             </div>
           </div>
@@ -444,9 +441,15 @@ const App: React.FC = () => {
 
       {gameState === GameState.INTRO && (
         <div className="z-20 h-full w-full flex flex-col items-center justify-center p-4 text-center overflow-hidden">
-            <h1 className="text-[clamp(3rem,10vh,7rem)] font-black orbitron mb-[4vh] text-white">RA <span className="text-emerald-400">O</span> NCHT</h1>
-            <div className="p-[4vh] bg-black/40 border border-white/10 rounded-[3rem] backdrop-blur-md">
-              <button onClick={startGame} className="px-12 py-4 bg-blue-600 rounded-2xl font-black orbitron text-[clamp(1.5rem,4vh,3rem)] shadow-xl hover:bg-blue-500 active:scale-95 transition-all text-white">START MISSION</button>
+            <div className="flex flex-col items-center justify-center">
+              <button 
+                onClick={startGame} 
+                className="group relative px-24 py-10 bg-cyan-600 rounded-[3rem] font-black orbitron text-4xl shadow-[0_0_50px_rgba(0,210,255,0.6)] hover:bg-cyan-500 active:scale-95 transition-all text-white animate-[pulse_2s_infinite]"
+              >
+                START MISSION
+                <div className="absolute inset-0 rounded-[3rem] bg-cyan-400/40 blur-2xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              </button>
+              <p className="mt-12 text-cyan-500/40 font-black orbitron text-xs tracking-[1em] animate-pulse">SYNCHRONIZING...</p>
             </div>
         </div>
       )}

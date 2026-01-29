@@ -56,7 +56,7 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
   useEffect(() => {
-    console.log('Game Engine v1.1.0 - NaN Prevention & Rendering Fix Applied');
+    console.log('Game Engine v1.2.0 - Combined Safe Spawning & NaN Fix');
   }, []);
 
   const getDynamicZoom = useCallback(() => {
@@ -66,6 +66,7 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     const scaleX = (dimensions.width * 0.95) / worldW;
     const scaleY = (dimensions.height * 0.85) / worldH;
     const baseFit = Math.min(scaleX, scaleY);
+    if (isNaN(baseFit)) return 1.0;
     if (cameraMode === CameraMode.FIELD) return baseFit;
     if (cameraMode === CameraMode.MOBILE) return Math.max(baseFit, 0.6);
     return dimensions.width < 1024 ? Math.max(baseFit, 0.7) : 1.0;
@@ -120,8 +121,9 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     enemiesRef.current = (levelData.enemies || []).map((e: any, i: number) => {
       let finalTx = e.x;
       let finalTy = e.y;
-      const distFromPlayer = Math.hypot(finalTx - playerTx, finalTy - playerTy);
       
+      // SAFE SPAWNING LOGIC: Ensure enemies are at least 7 tiles away from start
+      const distFromPlayer = Math.hypot(finalTx - playerTx, finalTy - playerTy);
       if (distFromPlayer < 5) {
         const potentialSpawns = [];
         const maze = levelData.maze;
@@ -232,7 +234,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
 
     const p = playerRef.current;
     if (!p.isDead) {
-      // Guard against propagation of NaN coordinates
       if (isNaN(p.x) || isNaN(p.y)) { initLevel(); return; }
 
       const inputX = currentMoveVec.current.x;
@@ -517,7 +518,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     const h = canvas.height || dimensions.height || 600;
     const { x: camX, y: camY } = cameraRef.current;
     
-    // Safety check for NaN values in transform
     if (isNaN(camX) || isNaN(camY) || isNaN(w) || isNaN(h)) return;
 
     const zoomVal = getDynamicZoom();
