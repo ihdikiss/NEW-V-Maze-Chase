@@ -292,10 +292,12 @@ const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>(GameState.LANDING);
   const [isPremium, setIsPremium] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userName, setUserName] = useState<string | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('signup');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [usernameInput, setUsernameInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   
@@ -346,15 +348,29 @@ const App: React.FC = () => {
     } catch (err) { console.error("Sync Logic Error:", err); setActiveLevels(HARDCODED_LEVELS); }
   };
 
+  const fetchUserProfile = async (userId: string) => {
+    try {
+      const { data, error } = await supabase.from('profiles').select('username').eq('id', userId).single();
+      if (!error && data) {
+        setUserName(data.username);
+      }
+    } catch (err) {
+      console.error("Profile Fetch Error:", err);
+    }
+  };
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setIsPremium(!!session);
       setUserEmail(session?.user.email || null);
+      if (session?.user.id) fetchUserProfile(session.user.id);
       syncQuestions(session?.user.email || null);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setIsPremium(!!session);
       setUserEmail(session?.user.email || null);
+      if (session?.user.id) fetchUserProfile(session.user.id);
+      else setUserName(null);
       syncQuestions(session?.user.email || null);
     });
     return () => subscription.unsubscribe();
@@ -367,15 +383,30 @@ const App: React.FC = () => {
       if (authMode === 'signup') {
         const { error, data } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
-        if (data.user) await supabase.from('profiles').insert([{ id: data.user.id, email: data.user.email.toLowerCase() }]);
+        if (data.user) {
+          await supabase.from('profiles').insert([{ 
+            id: data.user.id, 
+            email: data.user.email.toLowerCase(),
+            username: usernameInput
+          }]);
+          setUserName(usernameInput);
+        }
         setShowAuthModal(false); setGameState(GameState.PRO_SUCCESS);
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email: email.toLowerCase(), password });
+        const { error, data } = await supabase.auth.signInWithPassword({ email: email.toLowerCase(), password });
         if (error) throw error;
+        if (data.user) fetchUserProfile(data.user.id);
         setShowAuthModal(false); setGameState(GameState.PRO_SUCCESS);
       }
     } catch (err: any) { setAuthError(err.message); }
     finally { setLoading(false); }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUserName(null);
+    setUserEmail(null);
+    setIsPremium(false);
   };
 
   const startGame = () => {
@@ -408,13 +439,27 @@ const App: React.FC = () => {
                 <div className="absolute inset-0 rounded-[2.5rem] bg-cyan-400/30 blur-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
               </button>
               
-              {/* Discrete Premium Entrance */}
-              <button 
-                onClick={() => setShowAuthModal(true)} 
-                className="mt-8 text-cyan-400/40 hover:text-cyan-400 text-[10px] font-black orbitron tracking-[0.5em] transition-all"
-              >
-                PREMIUM NEURAL LINK
-              </button>
+              {/* User Identity Area */}
+              {isPremium && (userName || userEmail) ? (
+                <div className="flex flex-col items-center gap-2 mt-8 animate-fade-in">
+                  <p className="text-white font-black orbitron text-lg tracking-widest bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-emerald-400">
+                    WELCOME, {userName || userEmail?.split('@')[0].toUpperCase()}
+                  </p>
+                  <button 
+                    onClick={handleLogout}
+                    className="text-red-500/60 hover:text-red-500 text-[10px] font-black orbitron tracking-[0.3em] transition-all"
+                  >
+                    TERMINATE SESSION [تسجيل الخروج]
+                  </button>
+                </div>
+              ) : (
+                <button 
+                  onClick={() => setShowAuthModal(true)} 
+                  className="mt-8 text-cyan-400/40 hover:text-cyan-400 text-[10px] font-black orbitron tracking-[0.5em] transition-all"
+                >
+                  PREMIUM NEURAL LINK
+                </button>
+              )}
             </div>
           </div>
 
@@ -428,6 +473,9 @@ const App: React.FC = () => {
                   <button onClick={() => setAuthMode('login')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${authMode === 'login' ? 'bg-cyan-600 text-white' : 'text-gray-400'}`}>Login</button>
                 </div>
                 <form onSubmit={handleAuth} className="space-y-[1.5vh]">
+                  {authMode === 'signup' && (
+                    <input type="text" placeholder="Username" required value={usernameInput} onChange={e => setUsernameInput(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 outline-none focus:border-cyan-500 text-white text-sm" />
+                  )}
                   <input type="email" placeholder="Email" required value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 outline-none focus:border-cyan-500 text-white text-sm" />
                   <input type="password" placeholder="Password" required value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 outline-none focus:border-cyan-500 text-white text-sm" />
                   {authError && <p className="text-red-500 text-[10px] font-bold">{authError}</p>}
