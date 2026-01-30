@@ -34,12 +34,23 @@ const CameraIcon: React.FC = () => (
 );
 
 const HUD: React.FC<HUDProps> = ({ score, lives, level, question, ammo = 0, onToggleSettings, isSettingsOpen, cameraMode, onCameraModeChange }) => {
+  
+  const getRank = (lvl: number) => {
+    if (lvl <= 2) return { text: "STUDENT [طالب]", color: "text-blue-400" };
+    if (lvl <= 4) return { text: "GRADUATE [خريج]", color: "text-emerald-400" };
+    if (lvl <= 6) return { text: "RESEARCHER [باحث]", color: "text-yellow-400" };
+    if (lvl <= 8) return { text: "SPECIALIST [متخصص]", color: "text-purple-400" };
+    return { text: "DOCTOR [دكتور]", color: "text-red-400" };
+  };
+
+  const rank = getRank(level);
+
   return (
     <div className="w-full flex flex-col gap-1 z-20 pointer-events-none p-2 md:p-3">
-      {/* Upper Status Bar - Extremely slim and aligned */}
-      <div className="flex justify-between items-center px-4 py-1.5 max-h-[8vh] bg-black/60 border border-white/10 rounded-xl backdrop-blur-md shadow-[0_0_20px_rgba(0,0,0,0.5)] pointer-events-auto">
+      {/* Upper Status Bar */}
+      <div className="flex justify-between items-center px-4 py-1.5 max-h-[10vh] bg-black/60 border border-white/10 rounded-xl backdrop-blur-md shadow-[0_0_20px_rgba(0,0,0,0.5)] pointer-events-auto">
         
-        {/* Left Section */}
+        {/* Left Section: Sector & Vision */}
         <div className="flex gap-4 md:gap-8 items-center h-full">
           <div className="flex flex-col justify-center">
             <span className="text-[7px] md:text-[8px] text-[#4a90e2] font-black tracking-widest uppercase leading-none mb-0.5">SECTOR</span>
@@ -66,25 +77,33 @@ const HUD: React.FC<HUDProps> = ({ score, lives, level, question, ammo = 0, onTo
               </div>
             )}
           </div>
+        </div>
 
-          <div className="flex flex-col justify-center">
-            <span className="text-[7px] md:text-[8px] text-[#ff9f43] font-black tracking-widest uppercase leading-none mb-0.5">WEAPON</span>
-            <span className={`text-sm md:text-base font-black font-['Orbitron'] leading-none ${ammo > 0 ? 'text-[#ff9f43] animate-pulse' : 'text-gray-600'}`}>
-              {ammo > 0 ? `[${ammo}]` : 'OFF'}
-            </span>
+        {/* Center Section: Info & Data */}
+        <div className="flex flex-col items-center justify-center gap-1">
+          <div className="flex items-center gap-3">
+            <div className="flex flex-col items-center">
+              <span className="text-[6px] text-gray-500 font-bold uppercase tracking-tighter">RANK</span>
+              <span className={`text-[8px] md:text-[10px] font-black orbitron ${rank.color}`}>{rank.text}</span>
+            </div>
+            <div className="h-6 w-px bg-white/10 mx-2"></div>
+            <div className="flex flex-col items-center">
+              <span className="text-[6px] text-[#ffd700] font-black tracking-widest uppercase mb-0.5">DATA</span>
+              <span className="text-white text-sm md:text-lg font-black font-['Orbitron'] leading-none tracking-tighter">
+                {score.toString().padStart(6, '0')}
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* Center Section */}
-        <div className="flex flex-col items-center justify-center">
-          <span className="text-[7px] md:text-[8px] text-[#ffd700] font-black tracking-widest uppercase leading-none mb-0.5">DATA</span>
-          <span className="text-white text-lg md:text-2xl font-black font-['Orbitron'] leading-none tracking-tighter">
-            {score.toString().padStart(6, '0')}
-          </span>
-        </div>
-
-        {/* Right Section */}
-        <div className="flex items-center gap-3">
+        {/* Right Section: Weapons & Life */}
+        <div className="flex items-center gap-6">
+          <div className="flex flex-col justify-center items-center">
+            <span className="text-[7px] md:text-[8px] text-[#ff9f43] font-black tracking-widest uppercase leading-none mb-0.5">WEAPON</span>
+            <span className={`text-xs md:text-sm font-black font-['Orbitron'] leading-none ${ammo > 0 ? 'text-[#ff9f43] animate-pulse' : 'text-gray-600'}`}>
+              {ammo > 0 ? `[${ammo}]` : 'OFF'}
+            </span>
+          </div>
           <div className="flex flex-col items-end justify-center">
             <span className="text-[7px] md:text-[8px] text-red-500 font-black tracking-widest uppercase leading-none mb-1">LIFE</span>
             <div className="flex gap-1">
@@ -96,8 +115,8 @@ const HUD: React.FC<HUDProps> = ({ score, lives, level, question, ammo = 0, onTo
         </div>
       </div>
 
-      {/* Question Module - Compact */}
-      <div className="self-center w-full max-w-4xl">
+      {/* Question Module */}
+      <div className="self-center w-full max-w-4xl mt-1">
         <div className="relative bg-[#050510]/90 border-y border-cyan-400/40 py-1.5 px-4 rounded-xl flex items-center justify-center gap-3 shadow-[0_0_20px_rgba(0,210,255,0.1)]">
           <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-ping shrink-0"></div>
           <h2 className="text-[clamp(0.75rem,2.5vh,1.25rem)] text-center font-['Orbitron'] font-bold text-white tracking-tight uppercase leading-tight">

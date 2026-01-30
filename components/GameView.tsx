@@ -1,7 +1,7 @@
 
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { TILE_SIZE, PLAYER_SPEED, ENEMY_SPEED_BASE, MAZE_STYLE, PROJECTILE_SPEED } from '../constants';
-import { CameraMode } from '../types';
+import { CameraMode, Position } from '../types';
 
 interface GameViewProps {
   levelData: any;
@@ -14,18 +14,11 @@ interface GameViewProps {
 }
 
 interface Projectile {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  id: string;
+  x: number; y: number; vx: number; vy: number; id: string;
 }
 
 interface Explosion {
-  x: number;
-  y: number;
-  life: number; 
-  id: string;
+  x: number; y: number; life: number; id: string;
 }
 
 const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, onEnemyHit, onAmmoChange, cameraMode = CameraMode.CHASE, isTransitioning = false }) => {
@@ -33,12 +26,9 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   const containerRef = useRef<HTMLDivElement>(null);
   
   const playerRef = useRef({ 
-    x: 0, y: 0, width: 44, height: 44, dir: 'up', animFrame: 0, 
+    x: 0, y: 0, width: 44, height: 44, dir: 'up', 
     isShielded: false, shieldTime: 0, ammo: 0, isDead: false,
-    respawnGrace: 0,
-    currentAngle: 0,
-    moveIntensity: 0,
-    vx: 0, vy: 0 
+    respawnGrace: 0, currentAngle: 0, moveIntensity: 0, vx: 0, vy: 0 
   });
   
   const currentMoveVec = useRef({ x: 0, y: 0 });
@@ -50,30 +40,24 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   const rafRef = useRef<number>(0);
   const lastUpdateRef = useRef<number>(performance.now());
   const canCheckAnswerRef = useRef(true);
+  const isEnemyFrozenRef = useRef(false);
   
   const [screenShake, setScreenShake] = useState(0);
-  const [isGlitching, setIsGlitching] = useState(false);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
-  useEffect(() => {
-    console.log('Game Engine v1.2.0 - Combined Safe Spawning & NaN Fix');
-  }, []);
-
   const getDynamicZoom = useCallback(() => {
-    if (!dimensions.width || !dimensions.height || !levelData || !levelData.maze || !levelData.maze[0]) return 1.0;
+    if (!dimensions.width || !dimensions.height || !levelData?.maze?.[0]) return 1.0;
     const worldW = levelData.maze[0].length * TILE_SIZE;
     const worldH = levelData.maze.length * TILE_SIZE;
     const scaleX = (dimensions.width * 0.95) / worldW;
     const scaleY = (dimensions.height * 0.85) / worldH;
     const baseFit = Math.min(scaleX, scaleY);
-    if (isNaN(baseFit)) return 1.0;
     if (cameraMode === CameraMode.FIELD) return baseFit;
     if (cameraMode === CameraMode.MOBILE) return Math.max(baseFit, 0.6);
     return dimensions.width < 1024 ? Math.max(baseFit, 0.7) : 1.0;
   }, [dimensions, levelData, cameraMode]);
 
   const lerp = (start: number, end: number, amt: number) => (1 - amt) * start + amt * end;
-  
   const lerpAngle = (current: number, target: number, step: number) => {
     let diff = target - current;
     while (diff < -Math.PI) diff += Math.PI * 2;
@@ -81,527 +65,310 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     return current + diff * step;
   };
 
-  const getMazeValue = (tx: number, ty: number) => {
-    if (!levelData || !levelData.maze) return 1;
-    const maze = levelData.maze;
-    if (isNaN(ty) || isNaN(tx) || ty < 0 || ty >= maze.length || tx < 0 || tx >= maze[0].length) return 1;
-    return maze[ty][tx];
-  };
-
   const isWall = (wx: number, wy: number) => {
     const tx = Math.floor(wx / TILE_SIZE);
     const ty = Math.floor(wy / TILE_SIZE);
-    return getMazeValue(tx, ty) === 1;
+    const maze = levelData?.maze;
+    if (!maze || ty < 0 || ty >= maze.length || tx < 0 || tx >= maze[0].length) return true;
+    return maze[ty][tx] === 1;
+  };
+
+  const findPath = (start: Position, end: Position): Position[] | null => {
+    const maze = levelData.maze;
+    if (!maze) return null;
+    const queue: { pos: Position; path: Position[] }[] = [{ pos: start, path: [] }];
+    const visited = new Set<string>();
+    visited.add(`${start.x},${start.y}`);
+    const directions = [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}];
+    while (queue.length > 0) {
+      const { pos, path } = queue.shift()!;
+      if (pos.x === end.x && pos.y === end.y) return path;
+      for (const d of directions) {
+        const next = { x: pos.x + d.x, y: pos.y + d.y };
+        if (next.y>=0 && next.y<maze.length && next.x>=0 && next.x<maze[0].length && maze[next.y][next.x]!==1 && !visited.has(`${next.x},${next.y}`)) {
+          visited.add(`${next.x},${next.y}`);
+          queue.push({ pos: next, path: [...path, next] });
+        }
+      }
+    }
+    return null;
   };
 
   const initLevel = useCallback(() => {
-    if (!levelData || !levelData.startPos || !levelData.maze) return;
-    
-    const startX = levelData.startPos.x * TILE_SIZE + (TILE_SIZE - 44) / 2;
-    const startY = levelData.startPos.y * TILE_SIZE + (TILE_SIZE - 44) / 2;
-    
-    playerRef.current.x = startX;
-    playerRef.current.y = startY;
-    playerRef.current.vx = 0;
-    playerRef.current.vy = 0;
-    playerRef.current.isDead = false;
-    playerRef.current.respawnGrace = 3.0; 
-    playerRef.current.currentAngle = 0;
-    playerRef.current.moveIntensity = 0;
-    playerRef.current.ammo = 0;
-    
-    if (onAmmoChange) onAmmoChange(0);
+    if (!levelData?.startPos || !levelData?.maze) return;
+    const sx = levelData.startPos.x * TILE_SIZE + 10;
+    const sy = levelData.startPos.y * TILE_SIZE + 10;
+    playerRef.current = { ...playerRef.current, x: sx, y: sy, vx:0, vy:0, isDead: false, respawnGrace: 3.0, currentAngle: 0, moveIntensity: 0, ammo: 0 };
+    isEnemyFrozenRef.current = false;
+    canCheckAnswerRef.current = true;
     currentMoveVec.current = { x: 0, y: 0 };
-    cameraRef.current.x = startX + 22;
-    cameraRef.current.y = startY + 22;
-
-    const playerTx = levelData.startPos.x;
-    const playerTy = levelData.startPos.y;
-
-    enemiesRef.current = (levelData.enemies || []).map((e: any, i: number) => {
-      let finalTx = e.x;
-      let finalTy = e.y;
-      
-      // SAFE SPAWNING LOGIC: Ensure enemies are at least 7 tiles away from start
-      const distFromPlayer = Math.hypot(finalTx - playerTx, finalTy - playerTy);
-      if (distFromPlayer < 5) {
-        const potentialSpawns = [];
-        const maze = levelData.maze;
-        for (let r = 0; r < maze.length; r++) {
-          for (let c = 0; c < maze[0].length; c++) {
-            if (maze[r][c] === 0 && Math.hypot(c - playerTx, r - playerTy) >= 7) {
-              potentialSpawns.push({ x: c, y: r });
-            }
-          }
-        }
-        if (potentialSpawns.length > 0) {
-          const pick = potentialSpawns[Math.floor(Math.random() * potentialSpawns.length)];
-          finalTx = pick.x;
-          finalTy = pick.y;
-        }
-      }
-
-      return {
-        ...e,
-        x: finalTx * TILE_SIZE + 32,
-        y: finalTy * TILE_SIZE + 32,
-        vx: 0, vy: 0,
-        id: `enemy-${i}`,
-        frame: Math.random() * 10,
-        rotation: Math.random() * Math.PI * 2,
-        isDestroyed: false,
-        respawnTimer: 0,
-        isDormant: true,
-        thinkTimer: 1.5
-      };
-    });
-
+    cameraRef.current = { x: sx + 22, y: sy + 22 };
+    enemiesRef.current = (levelData.enemies || []).map((e: any, i: number) => ({
+      ...e, x: e.x * TILE_SIZE + 32, y: e.y * TILE_SIZE + 32, id: `enemy-${i}`, isDestroyed: false, thinkTimer: Math.random() * 0.5, currentPath: []
+    }));
     powerUpsRef.current = [
-      { x: 3 * TILE_SIZE + 32, y: 3 * TILE_SIZE + 32, type: 'shield', picked: false },
-      { x: 11 * TILE_SIZE + 32, y: 7 * TILE_SIZE + 32, type: 'weapon', picked: false }
+      { x: 3*TILE_SIZE+32, y: 3*TILE_SIZE+32, type: 'shield', picked: false },
+      { x: 11*TILE_SIZE+32, y: 7*TILE_SIZE+32, type: 'weapon', picked: false }
     ];
-    projectilesRef.current = [];
-    explosionsRef.current = [];
-  }, [levelData, onAmmoChange]);
+    projectilesRef.current = []; explosionsRef.current = [];
+  }, [levelData]);
 
   useEffect(() => { initLevel(); }, [initLevel]);
 
   useEffect(() => {
-    const updateSize = () => {
-      if (containerRef.current) {
-        const w = containerRef.current.clientWidth;
-        const h = containerRef.current.clientHeight;
-        if (w > 0 && h > 0) setDimensions({ width: w, height: h });
-      }
-    };
-    updateSize();
-    const timer = setTimeout(updateSize, 100);
-    window.addEventListener('resize', updateSize);
-    return () => {
-      window.removeEventListener('resize', updateSize);
-      clearTimeout(timer);
-    };
+    const updateSize = () => containerRef.current && setDimensions({ width: containerRef.current.clientWidth, height: containerRef.current.clientHeight });
+    updateSize(); window.addEventListener('resize', updateSize); return () => window.removeEventListener('resize', updateSize);
   }, []);
 
-  const checkCollision = (nx: number, ny: number, size: number = 44, padding: number = 14) => {
-    if (isNaN(nx) || isNaN(ny)) return true;
-    const points = [
-      { x: nx + padding, y: ny + padding },
-      { x: nx + size - padding, y: ny + padding },
-      { x: nx + padding, y: ny + size - padding },
-      { x: nx + size - padding, y: ny + size - padding }
-    ];
-    for (const p of points) { if (isWall(p.x, p.y)) return true; }
-    return false;
-  };
-
   const handleDeath = () => {
-    if (playerRef.current.isDead || playerRef.current.respawnGrace > 0) return;
-    playerRef.current.isDead = true;
-    setScreenShake(15);
-    setIsGlitching(true);
+    if (playerRef.current.isDead || playerRef.current.respawnGrace > 0 || isEnemyFrozenRef.current) return;
+    playerRef.current.isDead = true; setScreenShake(10);
     onEnemyHit();
-    setTimeout(() => { initLevel(); setIsGlitching(false); setScreenShake(0); }, 1200);
+    setTimeout(() => { initLevel(); setScreenShake(0); }, 1200);
   };
 
   const fireProjectile = () => {
-    if (isTransitioning || playerRef.current.ammo <= 0 || playerRef.current.isDead) return;
-    let vx = 0, vy = 0;
-    const dir = playerRef.current.dir;
-    if (dir === 'up') vy = -PROJECTILE_SPEED;
-    else if (dir === 'down') vy = PROJECTILE_SPEED;
-    else if (dir === 'left') vx = -PROJECTILE_SPEED;
-    else if (dir === 'right') vx = PROJECTILE_SPEED;
-    projectilesRef.current.push({ x: playerRef.current.x + 22, y: playerRef.current.y + 22, vx, vy, id: `p-${Date.now()}` });
-    playerRef.current.ammo--;
-    if (onAmmoChange) onAmmoChange(playerRef.current.ammo);
+    if (playerRef.current.ammo <= 0 || playerRef.current.isDead) return;
+    let vx=0, vy=0; const d = playerRef.current.dir;
+    if (d==='up') vy=-PROJECTILE_SPEED; else if (d==='down') vy=PROJECTILE_SPEED; else if (d==='left') vx=-PROJECTILE_SPEED; else vx=PROJECTILE_SPEED;
+    projectilesRef.current.push({ x: playerRef.current.x+22, y: playerRef.current.y+22, vx, vy, id: `p-${Date.now()}` });
+    playerRef.current.ammo--; onAmmoChange?.(playerRef.current.ammo);
   };
 
   const update = useCallback(() => {
-    if (!levelData || !levelData.maze) return;
+    if (!levelData?.maze) return;
     const now = performance.now();
-    let dt = (now - lastUpdateRef.current) / 1000;
-    if (isNaN(dt) || dt <= 0 || dt > 0.1) dt = 0.016; 
+    let dt = Math.min((now - lastUpdateRef.current) / 1000, 0.1);
     lastUpdateRef.current = now;
 
-    if (isTransitioning) {
-      draw();
-      rafRef.current = requestAnimationFrame(update);
-      return;
-    }
-
-    if (screenShake > 0) setScreenShake(s => Math.max(0, s - 0.5));
+    if (isTransitioning) { draw(); rafRef.current = requestAnimationFrame(update); return; }
+    if (screenShake > 0) setScreenShake(s => Math.max(0, s - 20 * dt));
 
     const p = playerRef.current;
     if (!p.isDead) {
-      if (isNaN(p.x) || isNaN(p.y)) { initLevel(); return; }
-
-      const inputX = currentMoveVec.current.x;
-      const inputY = currentMoveVec.current.y;
+      const iv = currentMoveVec.current;
+      p.moveIntensity = lerp(p.moveIntensity, (iv.x !== 0 || iv.y !== 0) ? 1 : 0, 10 * dt);
       
-      if (inputX !== 0 || inputY !== 0) {
-        const mag = Math.hypot(inputX, inputY);
-        const speedX = (inputX / mag) * PLAYER_SPEED;
-        const speedY = (inputY / mag) * PLAYER_SPEED;
-        
-        let dx = speedX * dt;
-        let dy = speedY * dt;
-        
-        const snapThreshold = 22; 
-        const centerX = Math.floor(p.x / TILE_SIZE) * TILE_SIZE + (TILE_SIZE - 44) / 2;
-        const centerY = Math.floor(p.y / TILE_SIZE) * TILE_SIZE + (TILE_SIZE - 44) / 2;
-
-        if (inputX !== 0 && inputY === 0) {
-           const offY = p.y - centerY;
-           if (Math.abs(offY) < snapThreshold && checkCollision(p.x + dx, p.y)) {
-              p.y = lerp(p.y, centerY, 15 * dt);
-           }
-        } else if (inputY !== 0 && inputX === 0) {
-           const offX = p.x - centerX;
-           if (Math.abs(offX) < snapThreshold && checkCollision(p.x, p.y + dy)) {
-              p.x = lerp(p.x, centerX, 15 * dt);
-           }
-        }
-
-        const canMoveX = !checkCollision(p.x + dx, p.y);
-        const canMoveY = !checkCollision(p.x, p.y + dy);
-        
-        p.vx = speedX; p.vy = speedY;
-        if (canMoveX) p.x += dx;
-        if (canMoveY) p.y += dy;
-        
-        if (canMoveX || canMoveY) {
-          if (Math.abs(speedX) > Math.abs(speedY)) p.dir = speedX > 0 ? 'right' : 'left';
-          else p.dir = speedY > 0 ? 'down' : 'up';
-          
-          const targetAngle = Math.atan2(speedY, speedX) + Math.PI / 2;
-          p.currentAngle = lerpAngle(p.currentAngle, targetAngle, Math.min(1.0, 20 * dt)); 
-          p.moveIntensity = Math.min(p.moveIntensity + 10 * dt, 1);
-        } else {
-          p.moveIntensity = Math.max(p.moveIntensity - 10 * dt, 0);
-        }
-      } else {
-        p.vx = 0; p.vy = 0;
-        p.moveIntensity = Math.max(p.moveIntensity - 10 * dt, 0);
+      if (iv.x !== 0 || iv.y !== 0) {
+        const mag = Math.hypot(iv.x, iv.y);
+        const vx = (iv.x / mag) * PLAYER_SPEED; const vy = (iv.y / mag) * PLAYER_SPEED;
+        if (!checkCol(p.x + vx * dt, p.y)) p.x += vx * dt;
+        if (!checkCol(p.x, p.y + vy * dt)) p.y += vy * dt;
+        p.currentAngle = lerpAngle(p.currentAngle, Math.atan2(vy, vx) + Math.PI/2, 15 * dt);
+        p.dir = Math.abs(vx) > Math.abs(vy) ? (vx > 0 ? 'right' : 'left') : (vy > 0 ? 'down' : 'up');
       }
-
       if (p.respawnGrace > 0) p.respawnGrace -= dt;
-      if (p.shieldTime > 0) {
-        p.shieldTime -= dt;
-        if (p.shieldTime <= 0) p.isShielded = false;
-      }
-      cameraRef.current.x = lerp(cameraRef.current.x, p.x + 22, Math.min(1.0, 10 * dt));
-      cameraRef.current.y = lerp(cameraRef.current.y, p.y + 22, Math.min(1.0, 10 * dt));
-      
-      const pCenterX = p.x + 22, pCenterY = p.y + 22;
-      for (const pw of powerUpsRef.current) {
-          if (pw.picked) continue;
-          if (Math.hypot(pCenterX - pw.x, pCenterY - pw.y) < 30) {
-              pw.picked = true;
-              if (pw.type === 'shield') { p.isShielded = true; p.shieldTime = 8; }
-              else if (pw.type === 'weapon') { p.ammo += 3; if (onAmmoChange) onAmmoChange(p.ammo); }
-          }
-      }
+      cameraRef.current.x = lerp(cameraRef.current.x, p.x + 22, 10 * dt);
+      cameraRef.current.y = lerp(cameraRef.current.y, p.y + 22, 10 * dt);
     }
 
     projectilesRef.current = projectilesRef.current.filter(pj => {
       pj.x += pj.vx * dt; pj.y += pj.vy * dt;
       if (isWall(pj.x, pj.y)) return false;
-      for (const e of enemiesRef.current) {
-        if (e.isDestroyed) continue;
-        if (Math.hypot(pj.x - e.x, pj.y - e.y) < 40) {
-          e.isDestroyed = true; e.respawnTimer = 6;
-          explosionsRef.current.push({ x: e.x, y: e.y, life: 1.0, id: `exp-${Date.now()}` });
-          return false;
-        }
-      }
+      for (const e of enemiesRef.current) if (!e.isDestroyed && Math.hypot(pj.x-e.x, pj.y-e.y)<30) { e.isDestroyed = true; return false; }
       return true;
     });
 
-    explosionsRef.current = explosionsRef.current.filter(exp => (exp.life -= dt * 2.5) > 0);
+    const movementAllowed = !isTransitioning && !isEnemyFrozenRef.current;
+    const pTX = Math.floor((p.x+22)/TILE_SIZE); const pTY = Math.floor((p.y+22)/TILE_SIZE);
 
-    const pCenterX = p.x + 22, pCenterY = p.y + 22;
-    for (let i = 0; i < enemiesRef.current.length; i++) {
-      const e = enemiesRef.current[i];
-      if (e.isDestroyed) { if ((e.respawnTimer -= dt) <= 0) e.isDestroyed = false; continue; }
+    for (const e of enemiesRef.current) {
+      if (e.isDestroyed) continue;
+      if (!movementAllowed) { e.vx = 0; e.vy = 0; continue; }
+      if (Math.hypot(p.x+22-e.x, p.y+22-e.y)<30 && !p.isShielded && p.respawnGrace<=0) handleDeath();
       
-      const dist = Math.hypot(pCenterX - e.x, pCenterY - e.y);
-      if (dist < 34 && !p.isShielded && p.respawnGrace <= 0) handleDeath();
-      
-      e.frame += 6 * dt; e.rotation += 3 * dt;
-      
-      if (e.thinkTimer > 0) { e.thinkTimer -= dt; continue; }
-
-      const targetX = pCenterX, targetY = pCenterY;
-      const eDist = Math.hypot(targetX - e.x, targetY - e.y);
-      
-      if (eDist > 1) {
-        const baseS = ENEMY_SPEED_BASE; 
-        let dvx = ((targetX - e.x) / eDist) * baseS;
-        let dvy = ((targetY - e.y) / eDist) * baseS;
-
-        const newAngle = Math.atan2(dvy, dvx);
-        const oldAngle = Math.atan2(e.vy, e.vx);
-        const angleDiff = Math.abs(newAngle - oldAngle);
-        if (angleDiff > 0.5 && (e.vx !== 0 || e.vy !== 0)) { e.thinkTimer = 0.15; }
-
-        for (let j = 0; j < enemiesRef.current.length; j++) {
-            if (i === j) continue;
-            const other = enemiesRef.current[j];
-            if (other.isDestroyed) continue;
-            const d = Math.hypot(e.x - other.x, e.y - other.y);
-            if (d < 50) {
-                const force = (50 - d) / 50;
-                dvx += (e.x - other.x) / d * force * 150; 
-                dvy += (e.y - other.y) / d * force * 150;
-            }
-        }
-        e.vx = dvx; e.vy = dvy;
+      e.thinkTimer -= dt;
+      if (e.thinkTimer <= 0) {
+        const path = findPath({x: Math.floor(e.x/TILE_SIZE), y: Math.floor(e.y/TILE_SIZE)}, {x: pTX, y: pTY});
+        if (path) e.currentPath = path; e.thinkTimer = 0.5;
       }
-
-      if (!checkCollision(e.x + e.vx * dt - 22, e.y - 22, 44, 10)) e.x += e.vx * dt;
-      if (!checkCollision(e.x - 22, e.y + e.vy * dt - 22, 44, 10)) e.y += e.vy * dt;
+      if (e.currentPath.length > 0) {
+        const next = e.currentPath[0];
+        const tx = next.x * TILE_SIZE + 32, ty = next.y * TILE_SIZE + 32;
+        const dist = Math.hypot(tx-e.x, ty-e.y);
+        if (dist > 5) {
+          e.x += ((tx-e.x)/dist) * ENEMY_SPEED_BASE * dt;
+          e.y += ((ty-e.y)/dist) * ENEMY_SPEED_BASE * dt;
+        } else e.currentPath.shift();
+      }
     }
 
-    if (!p.isDead) {
-      const pTx = Math.floor(pCenterX / TILE_SIZE);
-      const pTy = Math.floor(pCenterY / TILE_SIZE);
-      if (!isNaN(pTx) && !isNaN(pTy) && canCheckAnswerRef.current && getMazeValue(pTx, pTy) === 2) {
-        const targetOpt = (levelData.options || []).find((o: any) => o.pos.x === pTx && o.pos.y === pTy);
-        if (targetOpt) {
-          canCheckAnswerRef.current = false;
-          if (targetOpt.isCorrect) onCorrect(); else onIncorrect();
-          setTimeout(() => canCheckAnswerRef.current = true, 3500);
+    if (!p.isDead && canCheckAnswerRef.current && levelData.maze[pTY]?.[pTX] === 2) {
+      const opt = levelData.options.find((o:any) => o.pos.x === pTX && o.pos.y === pTY);
+      if (opt) {
+        canCheckAnswerRef.current = false;
+        if (opt.isCorrect) { 
+          isEnemyFrozenRef.current = true;
+          onCorrect(); 
+        } else { 
+          onIncorrect(); 
+          setTimeout(() => canCheckAnswerRef.current = true, 2000);
         }
       }
     }
+
     draw();
     rafRef.current = requestAnimationFrame(update);
-  }, [levelData, onCorrect, onIncorrect, onEnemyHit, dimensions, isTransitioning, onAmmoChange, initLevel]);
+  }, [levelData, onCorrect, onIncorrect, isTransitioning, dimensions]);
 
-  const drawPlayer = (ctx: CanvasRenderingContext2D) => {
-    const p = playerRef.current;
-    if (isNaN(p.x) || isNaN(p.y)) return;
-    if (p.isDead && Math.sin(performance.now() / 50) > 0) return;
-    const time = performance.now();
+  const checkCol = (nx:number, ny:number) => {
+    const pad = 12; const pts = [{x:nx+pad,y:ny+pad},{x:nx+44-pad,y:ny+pad},{x:nx+pad,y:ny+44-pad},{x:nx+44-pad,y:ny+44-pad}];
+    return pts.some(pt => isWall(pt.x, pt.y));
+  };
+
+  const drawPlayer = (ctx: CanvasRenderingContext2D, p: any) => {
     ctx.save();
     ctx.translate(p.x + 22, p.y + 22);
     ctx.rotate(p.currentAngle);
-    const bank = p.moveIntensity * 0.15;
-    ctx.scale(1 - bank, 1);
-    const enginePower = (16 + Math.sin(time / 30) * 4) * (0.6 + p.moveIntensity * 0.8);
-    [-16, 16].forEach(offsetX => {
-      const auraGrd = ctx.createRadialGradient(offsetX, 14, 0, offsetX, 14, enginePower * 1.8);
-      auraGrd.addColorStop(0, 'rgba(0, 210, 255, 0.6)');
-      auraGrd.addColorStop(1, 'transparent');
-      ctx.fillStyle = auraGrd; ctx.beginPath(); ctx.arc(offsetX, 14, enginePower * 1.5, 0, Math.PI * 2); ctx.fill();
-      const coreGrd = ctx.createLinearGradient(offsetX, 12, offsetX, 12 + enginePower);
-      coreGrd.addColorStop(0, '#ffffff'); coreGrd.addColorStop(0.5, '#00d2ff'); coreGrd.addColorStop(1, 'transparent');
-      ctx.fillStyle = coreGrd; ctx.beginPath(); ctx.ellipse(offsetX, 12 + enginePower / 2, 4, enginePower, 0, 0, Math.PI * 2); ctx.fill();
-    });
-    const chassisGrd = ctx.createLinearGradient(-22, 0, 22, 0);
-    chassisGrd.addColorStop(0, '#1a1d23'); chassisGrd.addColorStop(0.5, '#2f3542'); chassisGrd.addColorStop(1, '#1a1d23');
-    ctx.fillStyle = chassisGrd; ctx.beginPath(); ctx.moveTo(0, -28); ctx.lineTo(26, 12); ctx.lineTo(12, 18); ctx.lineTo(0, 10); ctx.lineTo(-12, 18); ctx.lineTo(-26, 12); ctx.closePath(); ctx.fill();
-    const armorGrd = ctx.createLinearGradient(-15, 0, 15, 0);
-    armorGrd.addColorStop(0, '#d1d8e0'); armorGrd.addColorStop(0.5, '#ffffff'); armorGrd.addColorStop(1, '#d1d8e0');
-    ctx.fillStyle = armorGrd; ctx.beginPath(); ctx.moveTo(0, -26); ctx.lineTo(16, 8); ctx.lineTo(0, 2); ctx.lineTo(-16, 8); ctx.closePath(); ctx.fill();
-    const canopyGrd = ctx.createRadialGradient(0, -10, 2, 0, -10, 10);
-    canopyGrd.addColorStop(0, '#74b9ff'); canopyGrd.addColorStop(0.7, '#0984e3'); canopyGrd.addColorStop(1, '#1e3799');
-    ctx.fillStyle = canopyGrd; ctx.beginPath(); ctx.ellipse(0, -10, 6, 12, 0, 0, Math.PI * 2); ctx.fill();
-    const neonPulse = (Math.sin(time / 200) + 1) / 2;
-    ctx.fillStyle = `rgba(0, 255, 255, ${0.4 + neonPulse * 0.6})`;
-    ctx.beginPath(); ctx.arc(-22, 10, 2, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(22, 10, 2, 0, Math.PI * 2); ctx.fill();
-    if (p.isShielded) {
-      ctx.strokeStyle = '#00f2ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, 42, 0, Math.PI * 2); ctx.stroke();
-      ctx.globalAlpha = 0.1 + neonPulse * 0.2; ctx.fillStyle = '#00f2ff'; ctx.fill(); ctx.globalAlpha = 1.0;
-    }
-    ctx.restore();
-  };
 
-  const drawEnemy = (ctx: CanvasRenderingContext2D, e: any) => {
-    const time = performance.now();
-    const pulse = (Math.sin(time / 200) + 1) / 2;
-    const isActive = !e.isDormant && !e.isDestroyed;
-    ctx.save();
-    ctx.translate(e.x, e.y + Math.sin(e.frame) * 8); 
-    ctx.rotate(e.rotation);
-    const hoverGrd = ctx.createRadialGradient(0, 0, 5, 0, 0, 35);
-    hoverGrd.addColorStop(0, `rgba(255, 0, 0, ${0.2 * pulse})`);
-    hoverGrd.addColorStop(1, 'transparent');
-    ctx.fillStyle = hoverGrd; ctx.beginPath(); ctx.arc(0, 0, 35, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#1a1a1a'; ctx.strokeStyle = '#333'; ctx.lineWidth = 2;
-    for (let i = 0; i < 4; i++) {
-        ctx.save(); ctx.rotate((i * Math.PI) / 2); ctx.beginPath(); ctx.moveTo(4, -4); ctx.lineTo(24, -12); ctx.lineTo(28, 0); ctx.lineTo(24, 12); ctx.lineTo(4, 4); ctx.closePath();
-        const bladeGrd = ctx.createLinearGradient(4, 0, 28, 0); bladeGrd.addColorStop(0, '#2d3436'); bladeGrd.addColorStop(1, '#000000');
-        ctx.fillStyle = bladeGrd; ctx.fill(); ctx.stroke();
-        ctx.fillStyle = `rgba(255, 0, 0, ${0.3 + pulse * 0.7})`; ctx.fillRect(18, -2, 6, 4); ctx.restore();
-    }
-    const coreGrd = ctx.createRadialGradient(0, 0, 0, 0, 0, 14);
-    coreGrd.addColorStop(0, '#444'); coreGrd.addColorStop(1, '#000');
-    ctx.fillStyle = coreGrd; ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = '#ff0000'; ctx.lineWidth = 1; ctx.stroke();
-    if (isActive) {
-        ctx.shadowBlur = 15 + pulse * 10; ctx.shadowColor = '#ff4d4d';
-        const eyeGrd = ctx.createRadialGradient(0, 0, 2, 0, 0, 9);
-        eyeGrd.addColorStop(0, '#ffffff'); eyeGrd.addColorStop(0.3, '#ff4d4d'); eyeGrd.addColorStop(1, '#630000');
-        ctx.fillStyle = eyeGrd; ctx.beginPath(); ctx.arc(0, 0, 9, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#ff0000'; ctx.fillRect(-6, -1, 12, 2);
-    } else { ctx.fillStyle = '#220000'; ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI * 2); ctx.fill(); }
-    ctx.restore();
-  };
+    // 1. Aura/Glow Effect
+    const auraGlow = ctx.createRadialGradient(0, 0, 5, 0, 0, 30);
+    auraGlow.addColorStop(0, 'rgba(0, 210, 255, 0.3)');
+    auraGlow.addColorStop(1, 'rgba(0, 210, 255, 0)');
+    ctx.fillStyle = auraGlow;
+    ctx.beginPath();
+    ctx.arc(0, 0, 30, 0, Math.PI * 2);
+    ctx.fill();
 
-  const drawPowerUp = (ctx: CanvasRenderingContext2D, pw: any) => {
-    if (pw.picked) return;
-    const time = performance.now();
-    const pulse = (Math.sin(time / 250) + 1) / 2;
-    ctx.save();
-    ctx.translate(pw.x, pw.y);
-    ctx.shadowBlur = 15 + pulse * 10;
-    ctx.shadowColor = pw.type === 'shield' ? '#00f2ff' : '#ff9f43';
-    ctx.globalAlpha = 0.2 + pulse * 0.2;
-    ctx.fillStyle = pw.type === 'shield' ? '#00f2ff' : '#ff9f43';
-    ctx.beginPath(); ctx.arc(0, 0, 20 + pulse * 5, 0, Math.PI * 2); ctx.fill();
-    ctx.globalAlpha = 1;
-    if (pw.type === 'shield') {
-        ctx.fillStyle = '#00f2ff';
-        ctx.beginPath();
-        ctx.moveTo(0, -12); ctx.lineTo(10, -8); ctx.lineTo(10, 4); ctx.lineTo(0, 12); ctx.lineTo(-10, 4); ctx.lineTo(-10, -8);
-        ctx.closePath(); ctx.fill();
-    } else {
-        ctx.fillStyle = '#ff9f43';
-        ctx.fillRect(-10, -10, 20, 20);
-        ctx.fillStyle = '#000'; ctx.fillRect(-6, -2, 12, 4); ctx.fillRect(-2, -6, 4, 12);
+    // 2. Engine Thruster (Rear)
+    if (p.moveIntensity > 0.1) {
+      const enginePulse = Math.sin(Date.now() / 50) * 5;
+      const thrusterGlow = ctx.createLinearGradient(0, 10, 0, 25 + enginePulse);
+      thrusterGlow.addColorStop(0, '#00f2ff');
+      thrusterGlow.addColorStop(0.5, 'rgba(0, 242, 255, 0.5)');
+      thrusterGlow.addColorStop(1, 'rgba(0, 242, 255, 0)');
+      
+      ctx.fillStyle = thrusterGlow;
+      ctx.beginPath();
+      ctx.moveTo(-8, 10);
+      ctx.lineTo(8, 10);
+      ctx.lineTo(0, 25 + enginePulse * p.moveIntensity);
+      ctx.fill();
     }
-    ctx.restore();
-  };
 
-  const drawProjectile = (ctx: CanvasRenderingContext2D, pj: Projectile) => {
-    ctx.save();
-    ctx.translate(pj.x, pj.y);
-    ctx.shadowBlur = 15; ctx.shadowColor = '#00f2ff';
+    // 3. Main Hull (Futuristic Body)
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = '#00d2ff';
+    
+    // Body Shape
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(0, -22); // Nose
+    ctx.bezierCurveTo(15, -10, 18, 5, 12, 12); // Right Wing
+    ctx.lineTo(-12, 12); // Back
+    ctx.bezierCurveTo(-18, 5, -15, -10, 0, -22); // Left Wing
+    ctx.fill();
+
+    // 4. Detailed Sections
+    // Central Power Core (Cockpit)
+    ctx.fillStyle = '#00d2ff';
+    ctx.beginPath();
+    ctx.ellipse(0, -5, 6, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Inner White Core
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.ellipse(0, -6, 3, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Wing Lights
     ctx.fillStyle = '#00f2ff';
-    ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#fff';
-    ctx.beginPath(); ctx.arc(0, 0, 2, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
-  };
+    ctx.fillRect(8, 2, 3, 6);
+    ctx.fillRect(-11, 2, 3, 6);
 
-  const drawWallBlock = (ctx: CanvasRenderingContext2D, sx: number, sy: number, tx: number, ty: number) => {
-    const time = performance.now();
-    const pulse = (Math.sin(time / 600) + 1) / 2;
-    ctx.fillStyle = '#0a0a25';
-    ctx.fillRect(sx, sy, TILE_SIZE, TILE_SIZE);
-    const hullGrd = ctx.createLinearGradient(sx, sy, sx + TILE_SIZE, sy + TILE_SIZE);
-    hullGrd.addColorStop(0, '#1e1e50'); hullGrd.addColorStop(0.5, '#12123d'); hullGrd.addColorStop(1, '#0a0a20');
-    ctx.fillStyle = hullGrd; ctx.fillRect(sx + 4, sy + 4, TILE_SIZE - 8, TILE_SIZE - 8);
-    ctx.fillStyle = '#1a1a4a'; ctx.fillRect(sx + 8, sy + 8, TILE_SIZE - 16, TILE_SIZE - 16);
-    ctx.strokeStyle = '#4a90e2'; ctx.lineWidth = 1; ctx.globalAlpha = 0.3;
-    ctx.beginPath(); ctx.moveTo(sx + 10, sy + 10); ctx.lineTo(sx + 20, sy + 20); ctx.moveTo(sx + TILE_SIZE - 10, sy + 10); ctx.lineTo(sx + TILE_SIZE - 20, sy + 20); ctx.stroke();
-    ctx.globalAlpha = 0.4 + pulse * 0.6; ctx.shadowBlur = 4 * pulse; ctx.shadowColor = '#00f2ff';
-    ctx.strokeStyle = pulse > 0.5 ? '#00f2ff' : '#4a90e2'; ctx.lineWidth = 1.5;
-    const seed = (tx * 7 + ty * 13) % 4; ctx.beginPath();
-    if (seed === 0) { ctx.moveTo(sx + 12, sy + TILE_SIZE/2); ctx.lineTo(sx + TILE_SIZE - 12, sy + TILE_SIZE/2); }
-    else if (seed === 1) { ctx.moveTo(sx + TILE_SIZE/2, sy + 12); ctx.lineTo(sx + TILE_SIZE/2, sy + TILE_SIZE - 12); }
-    else if (seed === 2) { ctx.arc(sx + TILE_SIZE/2, sy + TILE_SIZE/2, 10, 0, Math.PI * 1.5); }
-    else { ctx.moveTo(sx + 12, sy + 12); ctx.lineTo(sx + 25, sy + 25); ctx.lineTo(sx + TILE_SIZE - 12, sy + 25); }
-    ctx.stroke(); ctx.globalAlpha = 1; ctx.shadowBlur = 0; ctx.strokeStyle = 'rgba(74, 144, 226, 0.6)'; ctx.lineWidth = 1;
-    ctx.strokeRect(sx + 4, sy + 4, TILE_SIZE - 8, TILE_SIZE - 8); ctx.fillStyle = '#4a90e2';
-    [10, TILE_SIZE - 10].forEach(px => { [10, TILE_SIZE - 10].forEach(py => { ctx.beginPath(); ctx.arc(sx + px, sy + py, 1.5, 0, Math.PI * 2); ctx.fill(); }); });
+    ctx.restore();
   };
 
   const draw = () => {
-    const canvas = canvasRef.current; if (!canvas || !levelData || !levelData.maze) return;
-    const ctx = canvas.getContext('2d'); if (!ctx) return;
+    const canvas = canvasRef.current; const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx || !levelData?.maze) return;
+    const {x:cx, y:cy} = cameraRef.current; const z = getDynamicZoom();
     
-    const w = canvas.width || dimensions.width || 800;
-    const h = canvas.height || dimensions.height || 600;
-    const { x: camX, y: camY } = cameraRef.current;
+    ctx.fillStyle = '#050515'; ctx.fillRect(0,0,dimensions.width,dimensions.height);
     
-    if (isNaN(camX) || isNaN(camY) || isNaN(w) || isNaN(h)) return;
-
-    const zoomVal = getDynamicZoom();
     ctx.save();
-    ctx.fillStyle = MAZE_STYLE.floor;
-    ctx.fillRect(0, 0, w, h);
-    ctx.translate(w / 2, h / 2);
-    ctx.scale(zoomVal, zoomVal);
-    if (screenShake > 0) ctx.translate(Math.random()*screenShake - screenShake/2, Math.random()*screenShake - screenShake/2);
-    ctx.translate(-camX, -camY);
-    
-    for (let r = 0; r < levelData.maze.length; r++) {
-      for (let c = 0; c < levelData.maze[0].length; c++) {
-        const sx = c * TILE_SIZE, sy = r * TILE_SIZE;
-        const cell = levelData.maze[r][c];
-        if (cell === 1) { drawWallBlock(ctx, sx, sy, c, r); }
-        else if (cell === 2) {
-          ctx.fillStyle = "rgba(0, 210, 255, 0.1)"; ctx.fillRect(sx + 4, sy + 4, TILE_SIZE - 8, TILE_SIZE - 8);
-          ctx.strokeStyle = "rgba(0, 210, 255, 0.3)"; ctx.lineWidth = 1; ctx.strokeRect(sx + 4, sy + 4, TILE_SIZE - 8, TILE_SIZE - 8);
-          const opt = (levelData.options || []).find((o: any) => o.pos.x === c && o.pos.y === r);
-          if (opt) { ctx.fillStyle = "white"; ctx.font = "bold 14px Orbitron"; ctx.textAlign = "center"; ctx.fillText(opt.text, sx + TILE_SIZE / 2, sy + TILE_SIZE / 2 + 5); }
+    ctx.translate(dimensions.width/2, dimensions.height/2); ctx.scale(z,z);
+    if (screenShake>0) ctx.translate(Math.random()*screenShake-screenShake/2, Math.random()*screenShake-screenShake/2);
+    ctx.translate(-cx, -cy);
+
+    // Maze Rendering
+    for (let r=0; r<levelData.maze.length; r++) {
+      for (let c=0; c<levelData.maze[0].length; c++) {
+        const v = levelData.maze[r][c]; 
+        if (v===1) { 
+          ctx.fillStyle = '#1e1e50'; ctx.fillRect(c*TILE_SIZE+4, r*TILE_SIZE+4, TILE_SIZE-8, TILE_SIZE-8); 
+          ctx.strokeStyle = '#2d2d7a'; ctx.strokeRect(c*TILE_SIZE+4, r*TILE_SIZE+4, TILE_SIZE-8, TILE_SIZE-8);
+        }
+        else if (v===2) { 
+          ctx.fillStyle = 'rgba(0,210,255,0.1)'; ctx.fillRect(c*TILE_SIZE+4, r*TILE_SIZE+4, TILE_SIZE-8, TILE_SIZE-8);
+          const o = levelData.options.find((opt:any) => opt.pos.x===c && opt.pos.y===r);
+          if (o) { 
+            ctx.fillStyle='white'; ctx.font='bold 12px Orbitron'; ctx.textAlign='center'; 
+            ctx.shadowBlur = 5; ctx.shadowColor = '#00d2ff';
+            ctx.fillText(o.text, c*TILE_SIZE+32, r*TILE_SIZE+38); 
+            ctx.shadowBlur = 0;
+          }
         }
       }
     }
-    for (const pw of powerUpsRef.current) drawPowerUp(ctx, pw);
-    for (const pj of projectilesRef.current) drawProjectile(ctx, pj);
-    drawPlayer(ctx);
-    for (const e of enemiesRef.current) { if (!e.isDestroyed) drawEnemy(ctx, e); }
-    for (const exp of explosionsRef.current) {
-        ctx.fillStyle = `rgba(255,159,67,${exp.life})`;
-        ctx.beginPath(); ctx.arc(exp.x, exp.y, 40 * exp.life, 0, Math.PI * 2); ctx.fill();
-    }
-    ctx.restore();
-    if (isGlitching) { ctx.fillStyle = 'rgba(255, 0, 0, 0.1)'; ctx.fillRect(0, 0, w, h); }
-  };
 
-  const handleMobileTouch = (key: string, start: boolean) => {
-    if (isTransitioning || !start) return;
-    if (key === 'ArrowUp') currentMoveVec.current = { x: 0, y: -1 };
-    else if (key === 'ArrowDown') currentMoveVec.current = { x: 0, y: 1 };
-    else if (key === 'ArrowLeft') currentMoveVec.current = { x: -1, y: 0 };
-    else if (key === 'ArrowRight') currentMoveVec.current = { x: 1, y: 0 };
+    // Player Rendering
+    const p = playerRef.current;
+    if (!p.isDead || Math.sin(Date.now()/50)>0) {
+      drawPlayer(ctx, p);
+    }
+
+    // Enemy Rendering
+    for (const e of enemiesRef.current) if (!e.isDestroyed) {
+      ctx.save();
+      ctx.translate(e.x, e.y);
+      // Pulsing Enemy Glow
+      const enemyPulse = Math.sin(Date.now() / 100) * 5;
+      const eg = ctx.createRadialGradient(0,0,5,0,0,25 + enemyPulse);
+      eg.addColorStop(0, 'rgba(255, 0, 0, 0.4)');
+      eg.addColorStop(1, 'rgba(255, 0, 0, 0)');
+      ctx.fillStyle = eg;
+      ctx.beginPath(); ctx.arc(0, 0, 25 + enemyPulse, 0, Math.PI*2); ctx.fill();
+      
+      // Enemy Body
+      ctx.fillStyle='#ff4d4d'; ctx.beginPath(); ctx.arc(0, 0, 18, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle='#330000'; ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+    }
+
+    // Projectile Rendering
+    for (const pj of projectilesRef.current) { 
+      ctx.fillStyle='#00f2ff'; 
+      ctx.shadowBlur = 10; ctx.shadowColor = '#00f2ff';
+      ctx.beginPath(); ctx.arc(pj.x, pj.y, 5, 0, Math.PI*2); ctx.fill(); 
+      ctx.shadowBlur = 0;
+    }
+    
+    ctx.restore();
   };
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const kd = (e:KeyboardEvent) => {
       if (isTransitioning) return;
-      if (['ArrowUp', 'w'].includes(e.key)) currentMoveVec.current = { x: 0, y: -1 };
-      else if (['ArrowDown', 's'].includes(e.key)) currentMoveVec.current = { x: 0, y: 1 };
-      else if (['ArrowLeft', 'a'].includes(e.key)) currentMoveVec.current = { x: -1, y: 0 };
-      else if (['ArrowRight', 'd'].includes(e.key)) currentMoveVec.current = { x: 1, y: 0 };
-      if (e.code === 'Space') fireProjectile();
+      if (['ArrowUp','w'].includes(e.key)) currentMoveVec.current.y = -1;
+      else if (['ArrowDown','s'].includes(e.key)) currentMoveVec.current.y = 1;
+      else if (['ArrowLeft','a'].includes(e.key)) currentMoveVec.current.x = -1;
+      else if (['ArrowRight','d'].includes(e.key)) currentMoveVec.current.x = 1;
+      if (e.code==='Space') fireProjectile();
     };
-    window.addEventListener('keydown', handleKeyDown);
+    const ku = (e:KeyboardEvent) => {
+      if (['ArrowUp','ArrowDown','w','s'].includes(e.key)) currentMoveVec.current.y = 0;
+      else if (['ArrowLeft','ArrowRight','a','d'].includes(e.key)) currentMoveVec.current.x = 0;
+    };
+    window.addEventListener('keydown', kd); window.addEventListener('keyup', ku);
     rafRef.current = requestAnimationFrame(update);
-    return () => { window.removeEventListener('keydown', handleKeyDown); cancelAnimationFrame(rafRef.current); };
-  }, [update, isTransitioning]);
+    return () => { window.removeEventListener('keydown', kd); window.removeEventListener('keyup', ku); cancelAnimationFrame(rafRef.current); };
+  }, [update]);
 
   return (
-    <div ref={containerRef} className="absolute inset-0 w-full h-full flex items-center justify-center overflow-hidden bg-[#050510] z-0">
-      <canvas 
-        ref={canvasRef} 
-        width={dimensions.width || 800} 
-        height={dimensions.height || 600} 
-        className="w-full h-full block opacity-100 visible" 
-        style={{ display: 'block', visibility: 'visible', opacity: 1 }}
-      />
-      {dimensions.width < 1024 && dimensions.width > 0 && (
-        <div className="absolute inset-0 z-30 pointer-events-none select-none">
-          <div className="absolute bottom-10 left-10 w-36 h-36 pointer-events-auto">
-            <div className="relative w-full h-full flex items-center justify-center rounded-full border-2 border-white/20 bg-white/5 backdrop-blur-[1px] opacity-40 active:opacity-80 transition-all">
-              <button className="absolute top-1 w-12 h-12 flex items-center justify-center active:scale-95 transition-transform" onTouchStart={() => handleMobileTouch('ArrowUp', true)}><div className="w-8 h-8 rounded-lg border border-white/20 flex items-center justify-center bg-white/5"><span className="text-white text-base">▲</span></div></button>
-              <button className="absolute bottom-1 w-12 h-12 flex items-center justify-center active:scale-95 transition-transform" onTouchStart={() => handleMobileTouch('ArrowDown', true)}><div className="w-8 h-8 rounded-lg border border-white/20 flex items-center justify-center bg-white/5"><span className="text-white text-base">▼</span></div></button>
-              <button className="absolute left-1 w-12 h-12 flex items-center justify-center active:scale-95 transition-transform" onTouchStart={() => handleMobileTouch('ArrowLeft', true)}><div className="w-8 h-8 rounded-lg border border-white/20 flex items-center justify-center bg-white/5"><span className="text-white text-base">◀</span></div></button>
-              <button className="absolute right-1 w-12 h-12 flex items-center justify-center active:scale-95 transition-transform" onTouchStart={() => handleMobileTouch('ArrowRight', true)}><div className="w-8 h-8 rounded-lg border border-white/20 flex items-center justify-center bg-white/5"><span className="text-white text-base">▶</span></div></button>
-            </div>
-          </div>
-          <div className="absolute bottom-12 right-12 pointer-events-auto">
-            <button className="w-24 h-24 rounded-full border-2 border-white/40 bg-white/5 backdrop-blur-sm flex items-center justify-center text-4xl opacity-40 active:opacity-80 active:scale-90 transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)]" onTouchStart={() => fireProjectile()}>
-              <span className="drop-shadow-[0_0_10px_rgba(255,255,255,0.4)]">💣</span>
-            </button>
-          </div>
-        </div>
-      )}
+    <div ref={containerRef} className="absolute inset-0 w-full h-full flex items-center justify-center bg-[#050510]">
+      <canvas ref={canvasRef} width={dimensions.width} height={dimensions.height} className="block" />
     </div>
   );
 };
