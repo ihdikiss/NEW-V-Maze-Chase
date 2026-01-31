@@ -9,23 +9,18 @@ import { LEVELS as HARDCODED_LEVELS } from './constants';
 import { supabase } from './lib/supabase';
 
 /**
- * MOCK DATA: طيارون وهميون لملء القائمة
+ * بيانات العباقرة الوهميين (الاحتياطية)
  */
-const MOCK_LEADERBOARD = [
-  { email: 'CYBER_GHOST@INTERNAL', high_score: 28500 },
-  { email: 'NEURAL_ACE@SYSTEM', high_score: 24200 },
-  { email: 'ALPHA_STRIKER@CORE', high_score: 21900 },
-  { email: 'VOID_RUNNER@SIM', high_score: 18550 },
-  { email: 'Z_PILOT_99@HUB', high_score: 15400 },
-  { email: 'KRYPTO_KING@NET', high_score: 12100 },
-  { email: 'MATRIX_BOY@INTERNAL', high_score: 9800 },
-  { email: 'OMEGA_POINT@SIM', high_score: 7600 },
-  { email: 'DATA_SHARK@CORE', high_score: 5400 },
-  { email: 'ROOKIE_X@HUB', high_score: 3200 },
+const FAKE_GENIUSES = [
+  { name: "الطيار عثمان", score: 1200 },
+  { name: "الطيار سارة", score: 950 },
+  { name: "الطيار أمين", score: 800 },
+  { name: "الطيار ريان", score: 650 },
+  { name: "الطيار ليلى", score: 500 }
 ];
 
 /**
- * COMPONENT: AdminDashboard
+ * ADMIN DASHBOARD
  */
 const AdminDashboard: React.FC = () => {
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
@@ -146,18 +141,6 @@ const AdminDashboard: React.FC = () => {
               <button type="submit" disabled={loading} className="flex-1 bg-cyan-600 py-3 rounded-lg font-black orbitron shadow-lg shadow-cyan-900/20 active:scale-95 transition-all">UPLOAD DATA</button>
             </div>
           </form>
-          <div className="grid grid-cols-1 gap-4">
-            <h2 className="text-gray-500 text-xs font-black uppercase tracking-widest orbitron">Active Modules In This Sector</h2>
-            {adminQuestions.length > 0 ? adminQuestions.map(q => (
-              <div key={q.id} className="bg-white/5 p-5 rounded-xl border border-white/10 flex justify-between items-center group hover:border-cyan-500/40 transition-all">
-                <div className="flex-1">
-                  <p className="text-sm font-bold text-white mb-1">{q.question_text}</p>
-                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-tighter">Correct: {q.correct_option}</p>
-                </div>
-                <button onClick={() => handleDeleteQuestion(q.id)} className="px-4 py-2 bg-red-500/10 text-red-500 rounded-lg text-[10px] font-black orbitron hover:bg-red-500 hover:text-white transition-all">PURGE</button>
-              </div>
-            )) : <div className="text-center py-20 text-gray-600 border-2 border-dashed border-white/5 rounded-3xl">No data detected in this sector.</div>}
-          </div>
         </main>
       </div>
     </div>
@@ -168,7 +151,7 @@ const AdminDashboard: React.FC = () => {
  * MAIN APP
  */
 const App: React.FC = () => {
-  const [isAdminRoute, setIsAdminRoute] = useState(window.location.hash === '#admin');
+  const [isAdminRoute] = useState(window.location.hash === '#admin');
   const [gameState, setGameState] = useState<GameState>(GameState.LANDING);
   const [isPremium, setIsPremium] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -188,49 +171,47 @@ const App: React.FC = () => {
   const [cameraMode, setCameraMode] = useState<CameraMode>(CameraMode.CHASE);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  
+  // الحالة الجديدة لتخزين بيانات لوحة الترتيب النهائية
+  const [leaderboardList, setLeaderboardList] = useState<any[]>([]);
 
-  // Leaderboard logic
-  const [leaderboard, setLeaderboard] = useState<any[]>(MOCK_LEADERBOARD);
-  const [userRank, setUserRank] = useState<number | null>(null);
-  const [totalUsers, setTotalUsers] = useState(MOCK_LEADERBOARD.length);
-
-  const fetchGlobalStats = useCallback(async (currentUserEmail: string | null) => {
+  /**
+   * دالة جلب لوحة المتصدرين الحقيقية ودمجها مع الوهميين
+   */
+  const fetchLeaderboard = useCallback(async () => {
     try {
-      // 1. جلب البيانات الحقيقية من Supabase
-      const { data: board, error: boardError } = await supabase
+      // 1. جلب البيانات من Supabase
+      const { data: realProfiles, error } = await supabase
         .from('profiles')
         .select('email, high_score')
-        .order('high_score', { ascending: false })
-        .limit(10);
+        .order('high_score', { ascending: false });
+
+      if (error) throw error;
+
+      // 2. معالجة بيانات الطيارين الحقيقيين (الاسم هو ما قبل الـ @)
+      const mappedRealPlayers = (realProfiles || []).map(p => ({
+        name: `الطيار ${p.email.split('@')[0]}`,
+        score: p.high_score,
+        isUser: p.email.toLowerCase() === userEmail?.toLowerCase()
+      }));
+
+      // 3. دمج الحقيقيين مع الوهميين
+      const bots = FAKE_GENIUSES.map(g => ({ name: g.name, score: g.score, isBot: true }));
       
-      if (boardError) throw boardError;
+      // دمج وفرز القائمة النهائية
+      const fullList = [...mappedRealPlayers, ...bots]
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 10); // عرض أفضل 10 فقط للتنظيم
 
-      // 2. دمج البيانات الحقيقية مع الوهمية لضمان امتلاء القائمة
-      const realData = board || [];
-      const combined = [...realData, ...MOCK_LEADERBOARD]
-        .sort((a, b) => b.high_score - a.high_score)
-        .filter((v, i, a) => a.findIndex(t => (t.email === v.email)) === i) // إزالة التكرار
-        .slice(0, 10);
-
-      setLeaderboard(combined);
-      
-      const { count, error: countError } = await supabase.from('profiles').select('*', { count: 'exact', head: true });
-      if (countError) throw countError;
-      setTotalUsers((count || 0) + MOCK_LEADERBOARD.length);
-
-      if (currentUserEmail) {
-        // حساب الترتيب العالمي (مدمج)
-        const { data: allScores } = await supabase.from('profiles').select('email, high_score').order('high_score', { ascending: false });
-        const allCombined = [...(allScores || []), ...MOCK_LEADERBOARD].sort((a,b) => b.high_score - a.high_score);
-        const rank = allCombined.findIndex(s => s.email?.toLowerCase() === currentUserEmail.toLowerCase()) ?? -1;
-        setUserRank(rank !== -1 ? rank + 1 : null);
-      }
-    } catch (err) { 
-      // في حال فشل الاتصال، نكتفي بالقائمة الوهمية
-      setLeaderboard(MOCK_LEADERBOARD);
-      setTotalUsers(MOCK_LEADERBOARD.length);
+      setLeaderboardList(fullList);
+    } catch (err) {
+      console.error("Leaderboard Sync Error:", err);
+      // في حالة الخطأ، نكتفي بالوهميين + المستخدم الحالي
+      const user = { name: userEmail ? `الطيار ${userEmail.split('@')[0]}` : "أنت (الطيار الحالي)", score: score, isUser: true };
+      const fallback = [...FAKE_GENIUSES, user].sort((a, b) => b.score - a.score);
+      setLeaderboardList(fallback);
     }
-  }, []);
+  }, [userEmail, score]);
 
   const syncQuestions = async (target: string | null) => {
     try {
@@ -238,10 +219,7 @@ const App: React.FC = () => {
       let query = supabase.from('custom_questions').select('*');
       if (cleanEmail) {
         const { data: userQ } = await query.eq('assigned_to_email', cleanEmail);
-        if (userQ && userQ.length > 0) { 
-          updateLevels(userQ); 
-          return; 
-        }
+        if (userQ && userQ.length > 0) { updateLevels(userQ); return; }
       }
       const { data: genQ } = await supabase.from('custom_questions').select('*').is('assigned_to_email', null);
       if (genQ && genQ.length > 0) updateLevels(genQ);
@@ -271,17 +249,15 @@ const App: React.FC = () => {
       setIsPremium(!!session);
       setUserEmail(email);
       syncQuestions(email);
-      fetchGlobalStats(email);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       const email = session?.user.email || null;
       setIsPremium(!!session);
       setUserEmail(email);
       syncQuestions(email);
-      fetchGlobalStats(email);
     });
     return () => subscription.unsubscribe();
-  }, [fetchGlobalStats]);
+  }, []);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -296,7 +272,6 @@ const App: React.FC = () => {
       }
       setShowAuthModal(false); 
       setGameState(GameState.PRO_SUCCESS);
-      fetchGlobalStats(email);
     } catch (err: any) { setAuthError(err.message); }
     finally { setLoading(false); }
   };
@@ -307,13 +282,18 @@ const App: React.FC = () => {
   };
 
   const onMissionEnd = async (isGameOver: boolean) => {
+    // تحديث النتيجة في Supabase إذا كان المستخدم مسجلاً
     if (isPremium && userEmail) {
-      const { data: profile } = await supabase.from('profiles').select('high_score').eq('email', userEmail.toLowerCase()).single();
-      if (score > (profile?.high_score || 0)) {
-        await supabase.from('profiles').update({ high_score: score }).eq('email', userEmail.toLowerCase());
-      }
+      try {
+        const { data: profile } = await supabase.from('profiles').select('high_score').eq('email', userEmail.toLowerCase()).single();
+        if (score > (profile?.high_score || 0)) {
+          await supabase.from('profiles').update({ high_score: score }).eq('email', userEmail.toLowerCase());
+        }
+      } catch (e) { console.error("Score Sync Failed", e); }
     }
-    await fetchGlobalStats(userEmail);
+    
+    // جلب لوحة الصدارة فوراً قبل الانتقال للشاشة
+    await fetchLeaderboard();
     setGameState(isGameOver ? GameState.GAME_OVER : GameState.RESULT);
   };
 
@@ -341,7 +321,7 @@ const App: React.FC = () => {
           
           <div className="flex flex-col items-center gap-8 w-full">
             <button 
-              onClick={() => setGameState(GameState.INTRO)} 
+              onClick={() => { setScore(0); setLives(3); setLevelIndex(0); setGameState(GameState.INTRO); }} 
               className="group relative py-8 px-20 bg-cyan-600 rounded-[2.5rem] font-black orbitron text-3xl shadow-[0_0_50px_rgba(0,210,255,0.4)] hover:scale-105 active:scale-95 transition-all text-white animate-pulse"
             >
               النسخة المجانية
@@ -395,7 +375,7 @@ const App: React.FC = () => {
             <p className="text-sm text-gray-300 leading-relaxed mb-6">
               مرحباً بك أيها الطيار. هدفك هو فك شفرات الأسئلة الدراسية المفقودة في المتاهة. ابحث عن منطقة الإجابة الصحيحة وتجنب الحراس السايبورغ. 
               <br/><br/>
-              استخدم السهام أو [WASD] للتحرك، والمسافة [SPACE] للإطلاق إذا كان لديك ذخيرة.
+              استخدم السهام للتحرك، والمسافة [SPACE] للإطلاق.
             </p>
           </div>
           <button onClick={() => setGameState(GameState.BRIEFING)} className="px-20 py-8 bg-cyan-600 rounded-full font-black orbitron text-2xl shadow-[0_0_40px_rgba(0,210,255,0.4)] animate-pulse">ENGAGE SIMULATION</button>
@@ -427,7 +407,9 @@ const App: React.FC = () => {
               onAmmoChange={setAmmo}
               onCorrect={() => {
                 setScore(s => s + 500); setLastFeedback({ type: 'success', message: 'DATA RECOVERED' });
+                setIsTransitioning(true);
                 setTimeout(() => {
+                  setIsTransitioning(false);
                   setLastFeedback(null);
                   if (levelIndex < activeLevels.length - 1) { 
                     setLevelIndex(l => l + 1); setGameState(GameState.BRIEFING); 
@@ -449,7 +431,7 @@ const App: React.FC = () => {
             />
           </div>
           {lastFeedback && (
-            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md pointer-events-none transition-all duration-300">
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md pointer-events-none">
               <div className={`px-16 py-10 rounded-[3rem] border-b-8 shadow-2xl animate-bounce ${lastFeedback.type === 'success' ? 'bg-emerald-600/30 border-emerald-500 text-emerald-400' : 'bg-red-600/30 border-red-500 text-red-400'}`}>
                 <h2 className="text-4xl md:text-6xl font-black orbitron uppercase tracking-widest">{lastFeedback.message}</h2>
               </div>
@@ -459,49 +441,53 @@ const App: React.FC = () => {
       )}
 
       {(gameState === GameState.RESULT || gameState === GameState.GAME_OVER) && (
-        <div className="z-30 h-full w-full flex flex-col items-center justify-start bg-[#050510] p-8 text-center overflow-y-auto pt-[10vh] animate-fade-in custom-scrollbar pb-20">
-          <h1 className={`text-5xl md:text-7xl font-black orbitron mb-6 ${gameState === GameState.GAME_OVER ? 'text-red-500' : 'text-emerald-500'}`}>
+        <div className="z-30 h-full w-full flex flex-col items-center justify-start bg-[#050510] p-8 text-center overflow-y-auto pt-[5vh] animate-fade-in custom-scrollbar pb-20">
+          <h1 className={`text-5xl md:text-7xl font-black orbitron mb-4 ${gameState === GameState.GAME_OVER ? 'text-red-500' : 'text-emerald-500'}`}>
             {gameState === GameState.GAME_OVER ? 'SYSTEM FAILURE' : 'MISSION COMPLETE'}
           </h1>
           
-          <div className="bg-white/5 border border-white/10 rounded-[2.5rem] p-10 w-full max-w-2xl mb-10 shadow-2xl backdrop-blur-xl">
+          <div className="bg-white/5 border border-white/10 rounded-[2.5rem] p-10 w-full max-w-2xl mb-8 shadow-2xl backdrop-blur-xl">
             <p className="text-7xl font-black orbitron text-white mb-2 tracking-tighter">{score.toString().padStart(6, '0')}</p>
-            <p className="text-cyan-400 font-bold mb-8 orbitron text-xs tracking-[0.5em] uppercase">Total Credits Recovered</p>
-            
-            <div className="space-y-4 text-gray-300 font-bold text-sm leading-relaxed border-t border-white/10 pt-8">
-              <p className="text-white text-xl orbitron">PILOT STANDING</p>
-              <p className="text-cyan-400 text-lg uppercase tracking-wider">{userRank ? `GLOBAL RANK: #${userRank} / ${totalUsers}` : 'ANALYZING PERFORMANCE...'}</p>
-            </div>
+            <p className="text-cyan-400 font-bold mb-4 orbitron text-xs tracking-[0.5em] uppercase">Total Credits Recovered</p>
           </div>
 
-          <div className="w-full max-w-2xl bg-black/40 border border-white/10 rounded-[3rem] p-8 mb-10 shadow-xl overflow-hidden relative">
-            <h3 className="text-cyan-400 font-black orbitron text-[10px] mb-8 uppercase tracking-[0.6em] opacity-80">Global Hall of Fame</h3>
+          <div className="w-full max-w-2xl bg-black/60 border border-cyan-500/30 rounded-[3rem] p-8 mb-10 shadow-[0_0_50px_rgba(0,210,255,0.1)] overflow-hidden relative">
+            <h3 className="text-cyan-400 font-black orbitron text-lg mb-8 uppercase tracking-[0.3em] border-b border-cyan-500/20 pb-4">ترتيب أحسن العباقرة</h3>
             
             <div className="space-y-4">
-              {leaderboard.map((u, i) => (
-                <div key={i} className={`flex justify-between items-center p-6 rounded-[1.5rem] border transition-all duration-500 ${u.email?.toLowerCase() === userEmail?.toLowerCase() ? 'bg-cyan-500/20 border-cyan-500 scale-105 shadow-[0_0_20px_rgba(0,210,255,0.2)]' : 'bg-white/5 border-white/5'}`}>
+              {leaderboardList.map((u, i) => (
+                <div key={i} className={`flex justify-between items-center p-5 rounded-2xl border transition-all duration-500 
+                  ${u.isUser 
+                    ? 'bg-cyan-500/20 border-cyan-400 scale-[1.02] shadow-[0_0_20px_rgba(0,210,255,0.3)]' 
+                    : 'bg-white/5 border-white/5'}`}>
+                  
                   <div className="flex items-center gap-6">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center orbitron font-black text-xl ${i === 0 ? 'bg-yellow-400 text-black shadow-[0_0_10px_rgba(250,204,21,0.4)]' : i === 1 ? 'bg-gray-300 text-black' : i === 2 ? 'bg-orange-500 text-black' : 'text-gray-500'}`}>
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center orbitron font-black text-sm
+                      ${i === 0 ? 'bg-yellow-400 text-black shadow-lg' : i === 1 ? 'bg-gray-300 text-black' : i === 2 ? 'bg-orange-500 text-black' : 'text-gray-500'}`}>
                       {i + 1}
                     </div>
                     <div className="flex flex-col text-right">
-                      <span className="text-sm md:text-base font-bold orbitron uppercase tracking-tighter text-white">
-                        {u.email.split('@')[0]}
+                      <span className={`text-base font-bold orbitron uppercase tracking-tighter ${u.isUser ? 'text-white' : 'text-gray-300'}`}>
+                        {u.name}
                       </span>
-                      {u.email.includes('@') && u.email.split('@')[1] === 'SYSTEM' && (
-                        <span className="text-[6px] text-cyan-400 font-black orbitron opacity-50">SIMULATED ENTITY</span>
+                      {u.isUser && (
+                        <span className="text-[8px] text-cyan-400 font-black orbitron animate-pulse">CURRENT PILOT</span>
                       )}
                     </div>
                   </div>
-                  <span className="orbitron font-black text-cyan-400 text-xl tracking-tighter">{u.high_score.toLocaleString()}</span>
+                  
+                  <div className="flex flex-col items-end">
+                    <span className={`orbitron font-black text-xl tracking-tighter ${u.isUser ? 'text-cyan-400' : 'text-gray-500'}`}>
+                      {(u.score || u.high_score || 0).toLocaleString()}
+                    </span>
+                    <span className="text-[6px] text-gray-600 font-bold orbitron uppercase tracking-widest">Points</span>
+                  </div>
                 </div>
               ))}
             </div>
           </div>
 
-          <button onClick={() => setGameState(GameState.LANDING)} className="px-24 py-7 bg-cyan-600 rounded-[2rem] font-black orbitron text-white shadow-[0_0_40px_rgba(0,210,255,0.4)] hover:bg-cyan-500 transition-all mb-20 active:scale-95 group relative overflow-hidden">
-            <span className="relative z-10">REBOOT HUB</span>
-          </button>
+          <button onClick={() => setGameState(GameState.LANDING)} className="px-24 py-7 bg-cyan-600 rounded-[2rem] font-black orbitron text-white shadow-[0_0_40px_rgba(0,210,255,0.4)] hover:bg-cyan-500 transition-all mb-10 active:scale-95">REBOOT HUB</button>
         </div>
       )}
 

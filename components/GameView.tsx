@@ -28,7 +28,13 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   const playerRef = useRef({ 
     x: 0, y: 0, width: 44, height: 44, dir: 'up', 
     isShielded: false, shieldTime: 0, ammo: 0, isDead: false,
-    respawnGrace: 0, currentAngle: 0, moveIntensity: 0, vx: 0, vy: 0 
+    respawnGrace: 0, currentAngle: 0, moveIntensity: 0, vx: 0, vy: 0,
+    tiltAngle: 0, 
+    pitchFactor: 0, 
+    bankFactor: 0,  
+    visualScaleX: 1, 
+    visualScaleY: 1,
+    engineGlowScale: 1
   });
   
   const currentMoveVec = useRef({ x: 0, y: 0 });
@@ -98,20 +104,29 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     if (!levelData?.startPos || !levelData?.maze) return;
     const sx = levelData.startPos.x * TILE_SIZE + 10;
     const sy = levelData.startPos.y * TILE_SIZE + 10;
-    playerRef.current = { ...playerRef.current, x: sx, y: sy, vx:0, vy:0, isDead: false, respawnGrace: 3.0, currentAngle: 0, moveIntensity: 0, ammo: 0 };
+    playerRef.current = { 
+      ...playerRef.current, x: sx, y: sy, vx:0, vy:0, isDead: false, respawnGrace: 3.0, 
+      currentAngle: 0, moveIntensity: 0, ammo: 0, isShielded: false, shieldTime: 0,
+      tiltAngle: 0, visualScaleX: 1, visualScaleY: 1, engineGlowScale: 1,
+      bankFactor: 0, pitchFactor: 0
+    };
     isEnemyFrozenRef.current = false;
     canCheckAnswerRef.current = true;
     currentMoveVec.current = { x: 0, y: 0 };
     cameraRef.current = { x: sx + 22, y: sy + 22 };
     enemiesRef.current = (levelData.enemies || []).map((e: any, i: number) => ({
-      ...e, x: e.x * TILE_SIZE + 32, y: e.y * TILE_SIZE + 32, id: `enemy-${i}`, isDestroyed: false, thinkTimer: Math.random() * 0.5, currentPath: []
+      ...e, x: e.x * TILE_SIZE + 32, y: e.y * TILE_SIZE + 32, id: `enemy-${i}`, isDestroyed: false, 
+      thinkTimer: Math.random() * 0.5, currentPath: [], rotation: Math.random() * Math.PI * 2
     }));
+
     powerUpsRef.current = [
-      { x: 3*TILE_SIZE+32, y: 3*TILE_SIZE+32, type: 'shield', picked: false },
-      { x: 11*TILE_SIZE+32, y: 7*TILE_SIZE+32, type: 'weapon', picked: false }
+      { x: 3 * TILE_SIZE + 32, y: 3 * TILE_SIZE + 32, type: 'shield', picked: false },
+      { x: 11 * TILE_SIZE + 32, y: 7 * TILE_SIZE + 32, type: 'weapon', picked: false }
     ];
+    
     projectilesRef.current = []; explosionsRef.current = [];
-  }, [levelData]);
+    onAmmoChange?.(0);
+  }, [levelData, onAmmoChange]);
 
   useEffect(() => { initLevel(); }, [initLevel]);
 
@@ -121,7 +136,7 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   }, []);
 
   const handleDeath = () => {
-    if (playerRef.current.isDead || playerRef.current.respawnGrace > 0 || isEnemyFrozenRef.current) return;
+    if (playerRef.current.isDead || playerRef.current.respawnGrace > 0 || isEnemyFrozenRef.current || playerRef.current.isShielded) return;
     playerRef.current.isDead = true; setScreenShake(10);
     onEnemyHit();
     setTimeout(() => { initLevel(); setScreenShake(0); }, 1200);
@@ -149,14 +164,53 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
       const iv = currentMoveVec.current;
       p.moveIntensity = lerp(p.moveIntensity, (iv.x !== 0 || iv.y !== 0) ? 1 : 0, 10 * dt);
       
+      let targetBank = 0;
+      let targetPitch = 0;
+      let targetEngineScale = 1;
+
       if (iv.x !== 0 || iv.y !== 0) {
         const mag = Math.hypot(iv.x, iv.y);
         const vx = (iv.x / mag) * PLAYER_SPEED; const vy = (iv.y / mag) * PLAYER_SPEED;
+        
         if (!checkCol(p.x + vx * dt, p.y)) p.x += vx * dt;
         if (!checkCol(p.x, p.y + vy * dt)) p.y += vy * dt;
+        
         p.currentAngle = lerpAngle(p.currentAngle, Math.atan2(vy, vx) + Math.PI/2, 15 * dt);
         p.dir = Math.abs(vx) > Math.abs(vy) ? (vx > 0 ? 'right' : 'left') : (vy > 0 ? 'down' : 'up');
+
+        if (iv.x !== 0) targetBank = iv.x;
+        if (iv.y < 0) { 
+            targetPitch = 1;
+            targetEngineScale = 1.8;
+        } else if (iv.y > 0) {
+            targetPitch = -0.5;
+            targetEngineScale = 0.5;
+        }
       }
+
+      p.bankFactor = lerp(p.bankFactor, targetBank, 8 * dt);
+      p.pitchFactor = lerp(p.pitchFactor, targetPitch, 8 * dt);
+      p.engineGlowScale = lerp(p.engineGlowScale, targetEngineScale, 8 * dt);
+
+      for (const pw of powerUpsRef.current) {
+        if (!pw.picked && Math.hypot(p.x + 22 - pw.x, p.y + 22 - pw.y) < 35) {
+          pw.picked = true;
+          if (pw.type === 'shield') {
+            p.isShielded = true;
+            p.shieldTime = 12;
+          } else if (pw.type === 'weapon') {
+            // تحديث: تزويد اللاعب بـ 5 طلقات لكل كرة سلاح
+            p.ammo += 5;
+            onAmmoChange?.(p.ammo);
+          }
+        }
+      }
+
+      if (p.isShielded) {
+        p.shieldTime -= dt;
+        if (p.shieldTime <= 0) p.isShielded = false;
+      }
+
       if (p.respawnGrace > 0) p.respawnGrace -= dt;
       cameraRef.current.x = lerp(cameraRef.current.x, p.x + 22, 10 * dt);
       cameraRef.current.y = lerp(cameraRef.current.y, p.y + 22, 10 * dt);
@@ -177,6 +231,7 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
       if (!movementAllowed) { e.vx = 0; e.vy = 0; continue; }
       if (Math.hypot(p.x+22-e.x, p.y+22-e.y)<30 && !p.isShielded && p.respawnGrace<=0) handleDeath();
       
+      e.rotation += 2 * dt; 
       e.thinkTimer -= dt;
       if (e.thinkTimer <= 0) {
         const path = findPath({x: Math.floor(e.x/TILE_SIZE), y: Math.floor(e.y/TILE_SIZE)}, {x: pTX, y: pTY});
@@ -209,74 +264,201 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
 
     draw();
     rafRef.current = requestAnimationFrame(update);
-  }, [levelData, onCorrect, onIncorrect, isTransitioning, dimensions]);
+  }, [levelData, onCorrect, onIncorrect, isTransitioning, dimensions, onAmmoChange]);
 
   const checkCol = (nx:number, ny:number) => {
     const pad = 12; const pts = [{x:nx+pad,y:ny+pad},{x:nx+44-pad,y:ny+pad},{x:nx+pad,y:ny+44-pad},{x:nx+44-pad,y:ny+44-pad}];
     return pts.some(pt => isWall(pt.x, pt.y));
   };
 
+  const drawPowerUp = (ctx: CanvasRenderingContext2D, pw: any) => {
+    const time = Date.now();
+    const pulse = Math.sin(time / 200) * 0.2 + 1;
+    const rotate = time / 500;
+    
+    ctx.save();
+    ctx.translate(pw.x, pw.y);
+    
+    const color = pw.type === 'shield' ? '#00f2ff' : '#ff9f43';
+    
+    const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, 25 * pulse);
+    glow.addColorStop(0, color + '66');
+    glow.addColorStop(1, 'transparent');
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(0, 0, 25 * pulse, 0, Math.PI * 2); ctx.fill();
+    
+    ctx.rotate(rotate);
+    ctx.fillStyle = color;
+    ctx.shadowBlur = 15; ctx.shadowColor = color;
+    
+    if (pw.type === 'shield') {
+      ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+      ctx.strokeRect(-6, -6, 12, 12);
+    } else {
+      ctx.beginPath();
+      for(let i=0; i<4; i++) {
+        ctx.rotate(Math.PI/2);
+        ctx.moveTo(12, 0); ctx.lineTo(0, 4); ctx.lineTo(0, -4);
+      }
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(-3, -3, 6, 6);
+    }
+    
+    ctx.restore();
+  };
+
   const drawPlayer = (ctx: CanvasRenderingContext2D, p: any) => {
     ctx.save();
     ctx.translate(p.x + 22, p.y + 22);
     ctx.rotate(p.currentAngle);
+    
+    const time = Date.now();
+    const pulse = Math.sin(time / 200) * 0.5 + 0.5;
+    const isArmed = p.ammo > 0;
+    const themeColor = isArmed ? '#ff9f43' : '#00f2ff';
 
-    // 1. Aura/Glow Effect
-    const auraGlow = ctx.createRadialGradient(0, 0, 5, 0, 0, 30);
-    auraGlow.addColorStop(0, 'rgba(0, 210, 255, 0.3)');
-    auraGlow.addColorStop(1, 'rgba(0, 210, 255, 0)');
-    ctx.fillStyle = auraGlow;
-    ctx.beginPath();
-    ctx.arc(0, 0, 30, 0, Math.PI * 2);
-    ctx.fill();
-
-    // 2. Engine Thruster (Rear)
-    if (p.moveIntensity > 0.1) {
-      const enginePulse = Math.sin(Date.now() / 50) * 5;
-      const thrusterGlow = ctx.createLinearGradient(0, 10, 0, 25 + enginePulse);
-      thrusterGlow.addColorStop(0, '#00f2ff');
-      thrusterGlow.addColorStop(0.5, 'rgba(0, 242, 255, 0.5)');
-      thrusterGlow.addColorStop(1, 'rgba(0, 242, 255, 0)');
-      
-      ctx.fillStyle = thrusterGlow;
-      ctx.beginPath();
-      ctx.moveTo(-8, 10);
-      ctx.lineTo(8, 10);
-      ctx.lineTo(0, 25 + enginePulse * p.moveIntensity);
-      ctx.fill();
+    // 1. SHIELD
+    if (p.isShielded) {
+      const shieldPulse = Math.sin(time / 100) * 5;
+      const sg = ctx.createRadialGradient(0, 0, 30, 0, 0, 45 + shieldPulse);
+      sg.addColorStop(0, 'transparent');
+      sg.addColorStop(0.8, themeColor + '66');
+      sg.addColorStop(1, 'transparent');
+      ctx.fillStyle = sg;
+      ctx.beginPath(); ctx.arc(0, 0, 45 + shieldPulse, 0, Math.PI * 2); ctx.fill();
     }
 
-    // 3. Main Hull (Futuristic Body)
-    ctx.shadowBlur = 10;
-    ctx.shadowColor = '#00d2ff';
-    
-    // Body Shape
-    ctx.fillStyle = '#ffffff';
+    // 2. FORWARD SCANNER LIGHTS
+    const scannerGlow = ctx.createLinearGradient(0, -30, 0, -120);
+    scannerGlow.addColorStop(0, isArmed ? 'rgba(255, 159, 67, 0.6)' : 'rgba(0, 242, 255, 0.6)');
+    scannerGlow.addColorStop(1, 'transparent');
+    ctx.fillStyle = scannerGlow;
+    ctx.beginPath(); ctx.moveTo(-5, -28); ctx.lineTo(-25, -120); ctx.lineTo(0, -120); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(5, -28); ctx.lineTo(25, -120); ctx.lineTo(0, -120); ctx.fill();
+
+    // 3. THRUSTERS
+    if (p.moveIntensity > 0.05) {
+      const enginePulse = (Math.sin(time / 40) * 8) * p.engineGlowScale;
+      const washGlow = ctx.createRadialGradient(0, 20, 0, 0, 20, 40 * p.engineGlowScale);
+      washGlow.addColorStop(0, themeColor + '66');
+      washGlow.addColorStop(1, 'transparent');
+      ctx.fillStyle = washGlow;
+      ctx.beginPath(); ctx.arc(0, 20, 40, 0, Math.PI * 2); ctx.fill();
+
+      const drawEngine = (offsetX: number) => {
+        const thrustLen = (30 + enginePulse) * p.moveIntensity * p.engineGlowScale;
+        const g = ctx.createLinearGradient(0, 8, 0, 8 + thrustLen);
+        g.addColorStop(0, '#fff'); g.addColorStop(0.3, themeColor); g.addColorStop(1, 'transparent');
+        ctx.fillStyle = g;
+        const bankShift = p.bankFactor * 10;
+        const widthScale = 1 - Math.abs(p.bankFactor) * 0.3;
+        const engineX = (offsetX * widthScale) + (bankShift * 0.3);
+        ctx.beginPath(); ctx.moveTo(engineX - 4, 8); ctx.lineTo(engineX + 4, 8); ctx.lineTo(engineX, 8 + thrustLen); ctx.fill();
+      };
+      drawEngine(-10); drawEngine(10);
+    }
+
+    // 4. ADVANCED WARFARE AIRFRAME (PSEUDO-3D)
+    ctx.scale(p.visualScaleX, p.visualScaleY);
+    const bankShift = p.bankFactor * 10;
+    const widthScale = 1 - Math.abs(p.bankFactor) * 0.3;
+
+    const drawFacet = (color: string, points: [number, number][]) => {
+      ctx.fillStyle = color; ctx.beginPath();
+      points.forEach((pt, i) => {
+        const x = (pt[0] * widthScale) + (bankShift * (pt[1] < 0 ? 0.2 : 0.5));
+        const y = pt[1] - (p.pitchFactor * (pt[1] > 0 ? 10 : 0));
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.closePath(); ctx.fill();
+    };
+
+    // Base Chassis
+    drawFacet('#111', [[0, -28], [24, 8], [12, 10], [0, 14], [-12, 10], [-24, 8]]);
+    drawFacet(p.bankFactor > 0 ? '#050505' : '#222', [[0, -28], [4, -5], [0, 10], [-4, -5]]);
+
+    // 5. COMBAT MODE: WARFARE WING UPGRADE (تطوير حربي للأجنحة)
+    if (isArmed) {
+      ctx.shadowBlur = 25; ctx.shadowColor = '#ff9f43';
+      
+      // Secondary Combat Canards (أجنحة أمامية)
+      drawFacet('#222', [[-12, -18], [-24, -12], [-12, -6]]);
+      drawFacet('#222', [[12, -18], [24, -12], [12, -6]]);
+      
+      // Weapon Pods at Wingtips
+      const podY = 8 - (p.pitchFactor * 10);
+      ctx.fillStyle = '#0a0a0a';
+      ctx.fillRect((-30 * widthScale) + bankShift, podY, 10 * widthScale, 14);
+      ctx.fillRect((20 * widthScale) + bankShift, podY, 10 * widthScale, 14);
+      
+      // Energy Vents on Pods
+      ctx.fillStyle = '#ff9f43';
+      ctx.fillRect((-28 * widthScale) + bankShift, podY + 3, 6 * widthScale, 8);
+      ctx.fillRect((22 * widthScale) + bankShift, podY + 3, 6 * widthScale, 8);
+
+      // Hyper-Swept Aggressive Blades (شفرات طاقة حادة)
+      const bladePulse = Math.sin(time / 40) * 8;
+      // Primary Blades
+      drawFacet('#ff9f43', [[-24, 8], [-42 - bladePulse, 14], [-24, 16]]);
+      drawFacet('#ff9f43', [[24, 8], [42 + bladePulse, 14], [24, 16]]);
+      
+      // Secondary Energy Splines (زعانف طاقة إضافية)
+      ctx.fillStyle = 'rgba(255, 159, 67, 0.4)';
+      drawFacet('rgba(255, 159, 67, 0.4)', [[-15, 10], [-30 - bladePulse/2, 22], [-15, 12]]);
+      drawFacet('rgba(255, 159, 67, 0.4)', [[15, 10], [30 + bladePulse/2, 22], [15, 12]]);
+      
+      ctx.shadowBlur = 0;
+    }
+
+    // 6. DYNAMIC NEON STRIPS
+    ctx.strokeStyle = isArmed ? `rgba(255, 159, 67, ${0.4 + pulse * 0.6})` : `rgba(0, 242, 255, ${0.4 + pulse * 0.6})`;
+    ctx.lineWidth = 2.5;
+    ctx.shadowBlur = 15; ctx.shadowColor = themeColor;
+    ctx.beginPath(); ctx.moveTo(-8 * widthScale + bankShift, -5); ctx.lineTo(-24 * widthScale + bankShift, 8); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(8 * widthScale + bankShift, -5); ctx.lineTo(24 * widthScale + bankShift, 8); ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // 7. COCKPIT
+    const cockpitY = -12 + (p.pitchFactor * 5);
+    const cockpitGlow = ctx.createRadialGradient(bankShift*0.3, cockpitY, 1, bankShift*0.3, cockpitY, 10);
+    cockpitGlow.addColorStop(0, '#fff'); cockpitGlow.addColorStop(0.4, themeColor); cockpitGlow.addColorStop(1, 'transparent');
+    ctx.fillStyle = cockpitGlow; ctx.beginPath(); ctx.ellipse(bankShift*0.3, cockpitY, 6 * widthScale, 12, 0, 0, Math.PI * 2); ctx.fill();
+
+    ctx.restore();
+  };
+
+  const drawEnemy = (ctx: CanvasRenderingContext2D, e: any) => {
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    ctx.rotate(e.rotation);
+    const enemyPulse = Math.sin(Date.now() / 150) * 8;
+    const eg = ctx.createRadialGradient(0, 0, 0, 0, 0, 30 + enemyPulse);
+    eg.addColorStop(0, 'rgba(255, 0, 50, 0.4)');
+    eg.addColorStop(1, 'transparent');
+    ctx.fillStyle = eg;
+    ctx.beginPath(); ctx.arc(0, 0, 30 + enemyPulse, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 10; ctx.shadowColor = '#ff0033';
+    ctx.fillStyle = '#2d3436';
     ctx.beginPath();
-    ctx.moveTo(0, -22); // Nose
-    ctx.bezierCurveTo(15, -10, 18, 5, 12, 12); // Right Wing
-    ctx.lineTo(-12, 12); // Back
-    ctx.bezierCurveTo(-18, 5, -15, -10, 0, -22); // Left Wing
-    ctx.fill();
-
-    // 4. Detailed Sections
-    // Central Power Core (Cockpit)
-    ctx.fillStyle = '#00d2ff';
-    ctx.beginPath();
-    ctx.ellipse(0, -5, 6, 10, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Inner White Core
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.ellipse(0, -6, 3, 6, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Wing Lights
-    ctx.fillStyle = '#00f2ff';
-    ctx.fillRect(8, 2, 3, 6);
-    ctx.fillRect(-11, 2, 3, 6);
-
+    for (let i = 0; i < 6; i++) {
+        const angle = (i * Math.PI * 2) / 6;
+        const x = Math.cos(angle) * 16;
+        const y = Math.sin(angle) * 16;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#ff4d4d';
+    for (let i = 0; i < 4; i++) {
+        ctx.save(); ctx.rotate((i * Math.PI) / 2 + Math.PI / 4);
+        ctx.beginPath(); ctx.moveTo(14, -4); ctx.lineTo(24, 0); ctx.lineTo(14, 4); ctx.fill();
+        ctx.restore();
+    }
+    const eyePulse = Math.abs(Math.sin(Date.now() / 200)) * 4;
+    const eyeGlow = ctx.createRadialGradient(0, 0, 2, 0, 0, 10 + eyePulse);
+    eyeGlow.addColorStop(0, '#fff'); eyeGlow.addColorStop(0.3, '#ff0033'); eyeGlow.addColorStop(1, 'transparent');
+    ctx.fillStyle = eyeGlow; ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
   };
 
@@ -292,7 +474,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     if (screenShake>0) ctx.translate(Math.random()*screenShake-screenShake/2, Math.random()*screenShake-screenShake/2);
     ctx.translate(-cx, -cy);
 
-    // Maze Rendering
     for (let r=0; r<levelData.maze.length; r++) {
       for (let c=0; c<levelData.maze[0].length; c++) {
         const v = levelData.maze[r][c]; 
@@ -313,35 +494,16 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
       }
     }
 
-    // Player Rendering
+    for (const pw of powerUpsRef.current) if (!pw.picked) drawPowerUp(ctx, pw);
+
     const p = playerRef.current;
-    if (!p.isDead || Math.sin(Date.now()/50)>0) {
-      drawPlayer(ctx, p);
-    }
+    if (!p.isDead || Math.sin(Date.now()/50)>0) drawPlayer(ctx, p);
+    for (const e of enemiesRef.current) if (!e.isDestroyed) drawEnemy(ctx, e);
 
-    // Enemy Rendering
-    for (const e of enemiesRef.current) if (!e.isDestroyed) {
-      ctx.save();
-      ctx.translate(e.x, e.y);
-      // Pulsing Enemy Glow
-      const enemyPulse = Math.sin(Date.now() / 100) * 5;
-      const eg = ctx.createRadialGradient(0,0,5,0,0,25 + enemyPulse);
-      eg.addColorStop(0, 'rgba(255, 0, 0, 0.4)');
-      eg.addColorStop(1, 'rgba(255, 0, 0, 0)');
-      ctx.fillStyle = eg;
-      ctx.beginPath(); ctx.arc(0, 0, 25 + enemyPulse, 0, Math.PI*2); ctx.fill();
-      
-      // Enemy Body
-      ctx.fillStyle='#ff4d4d'; ctx.beginPath(); ctx.arc(0, 0, 18, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle='#330000'; ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI*2); ctx.fill();
-      ctx.restore();
-    }
-
-    // Projectile Rendering
     for (const pj of projectilesRef.current) { 
-      ctx.fillStyle='#00f2ff'; 
-      ctx.shadowBlur = 10; ctx.shadowColor = '#00f2ff';
-      ctx.beginPath(); ctx.arc(pj.x, pj.y, 5, 0, Math.PI*2); ctx.fill(); 
+      ctx.fillStyle='#ff9f43'; 
+      ctx.shadowBlur = 15; ctx.shadowColor = '#ff9f43';
+      ctx.beginPath(); ctx.arc(pj.x, pj.y, 6, 0, Math.PI*2); ctx.fill(); 
       ctx.shadowBlur = 0;
     }
     
