@@ -567,74 +567,111 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     <div ref={containerRef} className="absolute inset-0 w-full h-full flex items-center justify-center bg-[#050510]">
       <canvas ref={canvasRef} width={dimensions.width} height={dimensions.height} className="block" />
       
-      {/* High-End Mobile Controls Overlay - FIXED POSITIONING AND FORCED VISIBILITY */}
+      {/* 🚀 FORCE VISIBILITY STYLES FOR MOBILE DEVICES */}
       <style>{`
+        .mobile-ui-container {
+          position: fixed !important;
+          inset: 0 !important;
+          width: 100% !important;
+          height: 100% !important;
+          z-index: 99999 !important;
+          pointer-events: none !important;
+          display: none !important;
+          touch-action: none !important;
+          -webkit-user-select: none !important;
+          user-select: none !important;
+        }
+
         @media (max-width: 1024px) {
-          .mobile-ui-layer {
+          .mobile-ui-container {
             display: flex !important;
           }
         }
-        @media (min-width: 1025px) {
-          .mobile-ui-layer {
-            display: none !important;
-          }
+
+        .joystick-btn {
+          pointer-events: auto !important;
+          background: rgba(255, 255, 255, 0.05) !important;
+          backdrop-filter: blur(4px) !important;
+          -webkit-tap-highlight-color: transparent !important;
+          touch-action: none !important;
+          border: 1px solid rgba(0, 242, 255, 0.1) !important;
+        }
+        
+        .joystick-btn:active {
+          background: rgba(0, 242, 255, 0.2) !important;
+          border-color: rgba(0, 242, 255, 0.4) !important;
+          transform: scale(0.95);
+        }
+
+        .shoot-btn {
+          pointer-events: auto !important;
+          background: rgba(239, 68, 68, 0.1) !important;
+          backdrop-filter: blur(6px) !important;
+          border: 1px solid rgba(239, 68, 68, 0.3) !important;
+          -webkit-tap-highlight-color: transparent !important;
+          touch-action: none !important;
+          box-shadow: 0 0 15px rgba(239, 68, 68, 0.1) !important;
+        }
+
+        .shoot-btn:active {
+          background: rgba(239, 68, 68, 0.3) !important;
+          transform: scale(0.9);
         }
       `}</style>
       
-      <div className="mobile-ui-layer fixed inset-0 pointer-events-none z-[9999] flex items-end justify-between p-6 md:p-12">
+      <div className="mobile-ui-container flex items-end justify-between p-6 pb-12">
         
-        {/* Minimalist D-PAD Movement (Bottom-Left) - Joystick Style */}
-        <div className="pointer-events-auto flex items-center justify-center mb-4 ml-2">
-           <div className="relative w-32 h-32 md:w-40 md:h-40 bg-white/5 backdrop-blur-sm rounded-full border border-cyan-500/20 shadow-[0_0_20px_rgba(0,210,255,0.1)] flex items-center justify-center">
+        {/* Left Side: Directional Arrows (Moderate Size, High Transparency) */}
+        <div className="flex items-center justify-center ml-2 mb-4">
+           <div className="relative w-36 h-36 bg-white/5 rounded-full border border-cyan-500/10 flex items-center justify-center">
               {/* Up */}
               <button 
-                onTouchStart={(e) => { if (e.cancelable) e.preventDefault(); currentMoveVec.current.y = -1; }} 
-                onTouchEnd={(e) => { if (e.cancelable) e.preventDefault(); currentMoveVec.current.y = 0; }}
-                className="absolute top-1 w-12 h-12 bg-white/5 rounded-full flex items-center justify-center active:bg-cyan-500/30 transition-all border border-transparent active:border-cyan-400/40"
+                onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current.y = -1; }} 
+                onTouchEnd={(e) => { e.preventDefault(); currentMoveVec.current.y = 0; }}
+                className="joystick-btn absolute top-1 w-12 h-12 rounded-full flex items-center justify-center"
               >
-                <svg className="w-6 h-6 text-cyan-400/50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 15l7-7 7 7" /></svg>
+                <svg className="w-6 h-6 text-cyan-400/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 15l7-7 7 7" /></svg>
               </button>
               {/* Down */}
               <button 
-                onTouchStart={(e) => { if (e.cancelable) e.preventDefault(); currentMoveVec.current.y = 1; }} 
-                onTouchEnd={(e) => { if (e.cancelable) e.preventDefault(); currentMoveVec.current.y = 0; }}
-                className="absolute bottom-1 w-12 h-12 bg-white/5 rounded-full flex items-center justify-center active:bg-cyan-500/30 transition-all border border-transparent active:border-cyan-400/40"
+                onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current.y = 1; }} 
+                onTouchEnd={(e) => { e.preventDefault(); currentMoveVec.current.y = 0; }}
+                className="joystick-btn absolute bottom-1 w-12 h-12 rounded-full flex items-center justify-center"
               >
-                <svg className="w-6 h-6 text-cyan-400/50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" /></svg>
+                <svg className="w-6 h-6 text-cyan-400/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" /></svg>
               </button>
               {/* Left */}
               <button 
-                onTouchStart={(e) => { if (e.cancelable) e.preventDefault(); currentMoveVec.current.x = -1; }} 
-                onTouchEnd={(e) => { if (e.cancelable) e.preventDefault(); currentMoveVec.current.x = 0; }}
-                className="absolute left-1 w-12 h-12 bg-white/5 rounded-full flex items-center justify-center active:bg-cyan-500/30 transition-all border border-transparent active:border-cyan-400/40"
+                onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current.x = -1; }} 
+                onTouchEnd={(e) => { e.preventDefault(); currentMoveVec.current.x = 0; }}
+                className="joystick-btn absolute left-1 w-12 h-12 rounded-full flex items-center justify-center"
               >
-                <svg className="w-6 h-6 text-cyan-400/50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" /></svg>
+                <svg className="w-6 h-6 text-cyan-400/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" /></svg>
               </button>
               {/* Right */}
               <button 
-                onTouchStart={(e) => { if (e.cancelable) e.preventDefault(); currentMoveVec.current.x = 1; }} 
-                onTouchEnd={(e) => { if (e.cancelable) e.preventDefault(); currentMoveVec.current.x = 0; }}
-                className="absolute right-1 w-12 h-12 bg-white/5 rounded-full flex items-center justify-center active:bg-cyan-500/30 transition-all border border-transparent active:border-cyan-400/40"
+                onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current.x = 1; }} 
+                onTouchEnd={(e) => { e.preventDefault(); currentMoveVec.current.x = 0; }}
+                className="joystick-btn absolute right-1 w-12 h-12 rounded-full flex items-center justify-center"
               >
-                <svg className="w-6 h-6 text-cyan-400/50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" /></svg>
+                <svg className="w-6 h-6 text-cyan-400/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" /></svg>
               </button>
-              {/* Center indicator */}
-              <div className="w-5 h-5 rounded-full border border-cyan-500/10 bg-cyan-400/10 animate-pulse" />
+              {/* Center */}
+              <div className="w-4 h-4 rounded-full bg-cyan-400/10 border border-cyan-500/20 animate-pulse" />
            </div>
         </div>
 
-        {/* Professional Shoot Button (Bottom-Right) - Tactical UI */}
-        <div className="pointer-events-auto flex items-center justify-center mb-8 mr-4">
+        {/* Right Side: Small Shoot Button (High Transparency) */}
+        <div className="flex items-center justify-center mr-4 mb-8">
           <button 
-            onTouchStart={(e) => { if (e.cancelable) e.preventDefault(); fireProjectile(); }}
-            className="w-16 h-16 md:w-20 md:h-20 bg-red-600/10 backdrop-blur-md rounded-full border border-red-500/30 flex items-center justify-center active:scale-90 active:bg-red-600/30 transition-all shadow-[0_0_15px_rgba(239,68,68,0.1)]"
+            onTouchStart={(e) => { e.preventDefault(); fireProjectile(); }}
+            className="shoot-btn w-20 h-20 rounded-full flex items-center justify-center"
           >
-            {/* Crosshair Icon - Small & Precise */}
-            <div className="relative w-8 h-8 flex items-center justify-center pointer-events-none opacity-60">
-                <div className="absolute w-full h-px bg-red-500/40" />
-                <div className="absolute h-full w-px bg-red-500/40" />
-                <div className="w-4 h-4 border border-red-500/30 rounded-full" />
-                <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse shadow-[0_0_8px_#ef4444]" />
+            <div className="relative w-10 h-10 flex items-center justify-center pointer-events-none opacity-40">
+                <div className="absolute w-full h-px bg-red-500" />
+                <div className="absolute h-full w-px bg-red-500" />
+                <div className="w-6 h-6 border border-red-500/30 rounded-full" />
+                <div className="w-2 h-2 bg-red-500 rounded-full shadow-[0_0_10px_#ef4444]" />
             </div>
           </button>
         </div>
