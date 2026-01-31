@@ -566,6 +566,67 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   return (
     <div ref={containerRef} className="absolute inset-0 w-full h-full flex items-center justify-center bg-[#050510]">
       <canvas ref={canvasRef} width={dimensions.width} height={dimensions.height} className="block" />
+      
+      {/* High-End Mobile Controls Overlay - Swapped Positions */}
+      <div className="absolute inset-0 pointer-events-none flex items-end justify-between p-6 md:hidden">
+        
+        {/* Professional Shoot Button (Bottom-Left) - Small Size, High Transparency */}
+        <div className="pointer-events-auto flex items-center justify-center mb-8 ml-4">
+          <button 
+            onTouchStart={(e) => { e.preventDefault(); fireProjectile(); }}
+            className="w-16 h-16 bg-red-600/5 backdrop-blur-sm rounded-full border border-red-500/20 flex items-center justify-center active:scale-90 active:bg-red-600/20 transition-all shadow-sm"
+          >
+            {/* Crosshair Icon - Small & Clean */}
+            <div className="relative w-8 h-8 flex items-center justify-center pointer-events-none opacity-50">
+                <div className="absolute w-full h-px bg-red-500/40" />
+                <div className="absolute h-full w-px bg-red-500/40" />
+                <div className="w-4 h-4 border border-red-500/20 rounded-full" />
+                <div className="w-1 h-1 bg-red-500 rounded-full animate-pulse shadow-[0_0_5px_#ef4444]" />
+            </div>
+          </button>
+        </div>
+
+        {/* Minimalist D-PAD Movement (Bottom-Right) - Moderate Size, High Transparency */}
+        <div className="pointer-events-auto flex items-center justify-center mb-4 mr-2">
+           <div className="relative w-32 h-32 bg-white/5 backdrop-blur-sm rounded-full border border-cyan-500/10 shadow-lg flex items-center justify-center">
+              {/* Up */}
+              <button 
+                onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current.y = -1; }} 
+                onTouchEnd={() => currentMoveVec.current.y = 0}
+                className="absolute top-0.5 w-10 h-10 bg-white/5 rounded-full flex items-center justify-center active:bg-cyan-500/20 transition-all border border-transparent active:border-cyan-400/30"
+              >
+                <svg className="w-5 h-5 text-cyan-400/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 15l7-7 7 7" /></svg>
+              </button>
+              {/* Down */}
+              <button 
+                onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current.y = 1; }} 
+                onTouchEnd={() => currentMoveVec.current.y = 0}
+                className="absolute bottom-0.5 w-10 h-10 bg-white/5 rounded-full flex items-center justify-center active:bg-cyan-500/20 transition-all border border-transparent active:border-cyan-400/30"
+              >
+                <svg className="w-5 h-5 text-cyan-400/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" /></svg>
+              </button>
+              {/* Left */}
+              <button 
+                onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current.x = -1; }} 
+                onTouchEnd={() => currentMoveVec.current.x = 0}
+                className="absolute left-0.5 w-10 h-10 bg-white/5 rounded-full flex items-center justify-center active:bg-cyan-500/20 transition-all border border-transparent active:border-cyan-400/30"
+              >
+                <svg className="w-5 h-5 text-cyan-400/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" /></svg>
+              </button>
+              {/* Right */}
+              <button 
+                onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current.x = 1; }} 
+                onTouchEnd={() => currentMoveVec.current.x = 0}
+                className="absolute right-0.5 w-10 h-10 bg-white/5 rounded-full flex items-center justify-center active:bg-cyan-500/20 transition-all border border-transparent active:border-cyan-400/30"
+              >
+                <svg className="w-5 h-5 text-cyan-400/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" /></svg>
+              </button>
+              {/* Center indicator */}
+              <div className="w-4 h-4 rounded-full border border-cyan-500/10 bg-cyan-400/5 animate-pulse" />
+           </div>
+        </div>
+
+      </div>
     </div>
   );
 };
