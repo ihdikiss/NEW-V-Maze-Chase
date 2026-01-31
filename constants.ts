@@ -8,14 +8,14 @@ export const COLLISION_PADDING = 16;
 export const PROJECTILE_SPEED = 600; // Pixels per second
 
 export const MAZE_STYLE = {
-  wallBody: '#0f0f2d',
-  wallTop: '#1a1a4a',
-  wallBorder: '#4a90e2',
-  wallHighlight: '#00f2ff',
-  wallCircuit: '#ffd700',
-  wallShadow: 'rgba(0, 0, 0, 0.6)',
+  wallBody: '#020010', // Deep Space Black
+  wallTop: '#1a0033',  // Nebula Purple
+  wallBorder: '#6c5ce7', // Galactic Violet
+  wallHighlight: '#a29bfe', // Star Light
+  wallCircuit: '#00d2ff', // Energy Stream
+  wallShadow: 'rgba(0, 0, 0, 0.8)',
   floor: '#050515',
-  floorGrid: 'rgba(0, 242, 255, 0.03)',
+  floorGrid: 'rgba(108, 92, 231, 0.05)', // Cosmic Grid
   zoneFrame: '#4a90e2',
   zoneGlow: 'rgba(74, 144, 226, 0.4)',
   playerBody: '#ffffff',

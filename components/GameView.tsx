@@ -199,7 +199,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
             p.isShielded = true;
             p.shieldTime = 12;
           } else if (pw.type === 'weapon') {
-            // تحديث: تزويد اللاعب بـ 5 طلقات لكل كرة سلاح
             p.ammo += 5;
             onAmmoChange?.(p.ammo);
           }
@@ -319,7 +318,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     const isArmed = p.ammo > 0;
     const themeColor = isArmed ? '#ff9f43' : '#00f2ff';
 
-    // 1. SHIELD
     if (p.isShielded) {
       const shieldPulse = Math.sin(time / 100) * 5;
       const sg = ctx.createRadialGradient(0, 0, 30, 0, 0, 45 + shieldPulse);
@@ -330,7 +328,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
       ctx.beginPath(); ctx.arc(0, 0, 45 + shieldPulse, 0, Math.PI * 2); ctx.fill();
     }
 
-    // 2. FORWARD SCANNER LIGHTS
     const scannerGlow = ctx.createLinearGradient(0, -30, 0, -120);
     scannerGlow.addColorStop(0, isArmed ? 'rgba(255, 159, 67, 0.6)' : 'rgba(0, 242, 255, 0.6)');
     scannerGlow.addColorStop(1, 'transparent');
@@ -338,7 +335,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     ctx.beginPath(); ctx.moveTo(-5, -28); ctx.lineTo(-25, -120); ctx.lineTo(0, -120); ctx.fill();
     ctx.beginPath(); ctx.moveTo(5, -28); ctx.lineTo(25, -120); ctx.lineTo(0, -120); ctx.fill();
 
-    // 3. THRUSTERS
     if (p.moveIntensity > 0.05) {
       const enginePulse = (Math.sin(time / 40) * 8) * p.engineGlowScale;
       const washGlow = ctx.createRadialGradient(0, 20, 0, 0, 20, 40 * p.engineGlowScale);
@@ -360,7 +356,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
       drawEngine(-10); drawEngine(10);
     }
 
-    // 4. ADVANCED WARFARE AIRFRAME (PSEUDO-3D)
     ctx.scale(p.visualScaleX, p.visualScaleY);
     const bankShift = p.bankFactor * 10;
     const widthScale = 1 - Math.abs(p.bankFactor) * 0.3;
@@ -375,44 +370,29 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
       ctx.closePath(); ctx.fill();
     };
 
-    // Base Chassis
     drawFacet('#111', [[0, -28], [24, 8], [12, 10], [0, 14], [-12, 10], [-24, 8]]);
     drawFacet(p.bankFactor > 0 ? '#050505' : '#222', [[0, -28], [4, -5], [0, 10], [-4, -5]]);
 
-    // 5. COMBAT MODE: WARFARE WING UPGRADE (تطوير حربي للأجنحة)
     if (isArmed) {
       ctx.shadowBlur = 25; ctx.shadowColor = '#ff9f43';
-      
-      // Secondary Combat Canards (أجنحة أمامية)
       drawFacet('#222', [[-12, -18], [-24, -12], [-12, -6]]);
       drawFacet('#222', [[12, -18], [24, -12], [12, -6]]);
-      
-      // Weapon Pods at Wingtips
       const podY = 8 - (p.pitchFactor * 10);
       ctx.fillStyle = '#0a0a0a';
       ctx.fillRect((-30 * widthScale) + bankShift, podY, 10 * widthScale, 14);
       ctx.fillRect((20 * widthScale) + bankShift, podY, 10 * widthScale, 14);
-      
-      // Energy Vents on Pods
       ctx.fillStyle = '#ff9f43';
       ctx.fillRect((-28 * widthScale) + bankShift, podY + 3, 6 * widthScale, 8);
       ctx.fillRect((22 * widthScale) + bankShift, podY + 3, 6 * widthScale, 8);
-
-      // Hyper-Swept Aggressive Blades (شفرات طاقة حادة)
       const bladePulse = Math.sin(time / 40) * 8;
-      // Primary Blades
       drawFacet('#ff9f43', [[-24, 8], [-42 - bladePulse, 14], [-24, 16]]);
       drawFacet('#ff9f43', [[24, 8], [42 + bladePulse, 14], [24, 16]]);
-      
-      // Secondary Energy Splines (زعانف طاقة إضافية)
       ctx.fillStyle = 'rgba(255, 159, 67, 0.4)';
       drawFacet('rgba(255, 159, 67, 0.4)', [[-15, 10], [-30 - bladePulse/2, 22], [-15, 12]]);
       drawFacet('rgba(255, 159, 67, 0.4)', [[15, 10], [30 + bladePulse/2, 22], [15, 12]]);
-      
       ctx.shadowBlur = 0;
     }
 
-    // 6. DYNAMIC NEON STRIPS
     ctx.strokeStyle = isArmed ? `rgba(255, 159, 67, ${0.4 + pulse * 0.6})` : `rgba(0, 242, 255, ${0.4 + pulse * 0.6})`;
     ctx.lineWidth = 2.5;
     ctx.shadowBlur = 15; ctx.shadowColor = themeColor;
@@ -420,7 +400,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     ctx.beginPath(); ctx.moveTo(8 * widthScale + bankShift, -5); ctx.lineTo(24 * widthScale + bankShift, 8); ctx.stroke();
     ctx.shadowBlur = 0;
 
-    // 7. COCKPIT
     const cockpitY = -12 + (p.pitchFactor * 5);
     const cockpitGlow = ctx.createRadialGradient(bankShift*0.3, cockpitY, 1, bankShift*0.3, cockpitY, 10);
     cockpitGlow.addColorStop(0, '#fff'); cockpitGlow.addColorStop(0.4, themeColor); cockpitGlow.addColorStop(1, 'transparent');
@@ -474,20 +453,76 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     if (screenShake>0) ctx.translate(Math.random()*screenShake-screenShake/2, Math.random()*screenShake-screenShake/2);
     ctx.translate(-cx, -cy);
 
-    for (let r=0; r<levelData.maze.length; r++) {
-      for (let c=0; c<levelData.maze[0].length; c++) {
-        const v = levelData.maze[r][c]; 
-        if (v===1) { 
-          ctx.fillStyle = '#1e1e50'; ctx.fillRect(c*TILE_SIZE+4, r*TILE_SIZE+4, TILE_SIZE-8, TILE_SIZE-8); 
-          ctx.strokeStyle = '#2d2d7a'; ctx.strokeRect(c*TILE_SIZE+4, r*TILE_SIZE+4, TILE_SIZE-8, TILE_SIZE-8);
+    const time = Date.now();
+    const maze = levelData.maze;
+    const rows = maze.length;
+    const cols = maze[0].length;
+
+    for (let r=0; r < rows; r++) {
+      for (let c=0; c < cols; c++) {
+        const v = maze[r][c]; 
+        const x = c * TILE_SIZE;
+        const y = r * TILE_SIZE;
+
+        if (v === 1) { 
+          const isWallAbove = r > 0 && maze[r-1][c] === 1;
+          const isWallBelow = r < rows - 1 && maze[r+1][c] === 1;
+          const isWallLeft = c > 0 && maze[r][c-1] === 1;
+          const isWallRight = c < cols - 1 && maze[r][c+1] === 1;
+
+          // 1. Draw Shadow (Drop Shadow Effect)
+          ctx.fillStyle = 'rgba(0,0,0,0.4)';
+          ctx.fillRect(x + 10, y + 10, TILE_SIZE, TILE_SIZE);
+
+          // 2. Draw 3D Side Walls (The Body)
+          ctx.fillStyle = MAZE_STYLE.wallBody;
+          ctx.fillRect(x, y + 8, TILE_SIZE, TILE_SIZE - 8);
+          
+          // Connect Bodies to remove segmentation
+          if (isWallRight) ctx.fillRect(x + TILE_SIZE - 2, y + 8, 4, TILE_SIZE - 8);
+          if (isWallBelow) ctx.fillRect(x, y + TILE_SIZE - 2, TILE_SIZE, 4);
+
+          // 3. Draw Top Surface (Nebula Gradient)
+          const wallGrad = ctx.createLinearGradient(x, y, x, y + TILE_SIZE);
+          wallGrad.addColorStop(0, MAZE_STYLE.wallTop);
+          wallGrad.addColorStop(1, MAZE_STYLE.wallBody);
+          ctx.fillStyle = wallGrad;
+          ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+
+          // Connect Tops to remove segmentation
+          ctx.fillStyle = MAZE_STYLE.wallTop;
+          if (isWallRight) ctx.fillRect(x + TILE_SIZE - 2, y, 4, TILE_SIZE);
+          if (isWallBelow) ctx.fillRect(x, y + TILE_SIZE - 2, TILE_SIZE, 4);
+
+          // 4. Cosmic Details (Only on Top Surface)
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+          const starSeed = (r * 7 + c * 3) % 10;
+          for(let i=0; i<2; i++) {
+             const sx = x + 10 + ((starSeed * (i+1) * 17) % (TILE_SIZE - 20));
+             const sy = y + 10 + ((starSeed * (i+1) * 31) % (TILE_SIZE - 20));
+             const starPulse = Math.sin(time / 500 + i) * 0.5 + 0.5;
+             ctx.globalAlpha = starPulse;
+             ctx.beginPath(); ctx.arc(sx, sy, 0.8, 0, Math.PI * 2); ctx.fill();
+          }
+          ctx.globalAlpha = 1.0;
+
+          // 5. Exterior Energy Border (Only on edges not connected to other walls)
+          ctx.strokeStyle = MAZE_STYLE.wallBorder;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          if (!isWallAbove) { ctx.moveTo(x, y); ctx.lineTo(x + TILE_SIZE, y); }
+          if (!isWallBelow) { ctx.moveTo(x, y + TILE_SIZE); ctx.lineTo(x + TILE_SIZE, y + TILE_SIZE); }
+          if (!isWallLeft) { ctx.moveTo(x, y); ctx.lineTo(x, y + TILE_SIZE); }
+          if (!isWallRight) { ctx.moveTo(x + TILE_SIZE, y); ctx.lineTo(x + TILE_SIZE, y + TILE_SIZE); }
+          ctx.stroke();
         }
         else if (v===2) { 
-          ctx.fillStyle = 'rgba(0,210,255,0.1)'; ctx.fillRect(c*TILE_SIZE+4, r*TILE_SIZE+4, TILE_SIZE-8, TILE_SIZE-8);
+          ctx.fillStyle = 'rgba(0,210,255,0.1)'; ctx.fillRect(x+4, y+4, TILE_SIZE-8, TILE_SIZE-8);
           const o = levelData.options.find((opt:any) => opt.pos.x===c && opt.pos.y===r);
           if (o) { 
             ctx.fillStyle='white'; ctx.font='bold 12px Orbitron'; ctx.textAlign='center'; 
             ctx.shadowBlur = 5; ctx.shadowColor = '#00d2ff';
-            ctx.fillText(o.text, c*TILE_SIZE+32, r*TILE_SIZE+38); 
+            ctx.fillText(o.text, x+32, y+38); 
             ctx.shadowBlur = 0;
           }
         }
