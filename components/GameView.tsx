@@ -548,15 +548,15 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   useEffect(() => {
     const kd = (e:KeyboardEvent) => {
       if (isTransitioning) return;
-      if (['ArrowUp','w'].includes(e.key)) currentMoveVec.current.y = -1;
-      else if (['ArrowDown','s'].includes(e.key)) currentMoveVec.current.y = 1;
-      else if (['ArrowLeft','a'].includes(e.key)) currentMoveVec.current.x = -1;
-      else if (['ArrowRight','d'].includes(e.key)) currentMoveVec.current.x = 1;
+      // التعديل هنا لضمان الحركة المستمرة في اتجاه واحد فقط في كل مرة
+      if (['ArrowUp','w'].includes(e.key)) { currentMoveVec.current.y = -1; currentMoveVec.current.x = 0; }
+      else if (['ArrowDown','s'].includes(e.key)) { currentMoveVec.current.y = 1; currentMoveVec.current.x = 0; }
+      else if (['ArrowLeft','a'].includes(e.key)) { currentMoveVec.current.x = -1; currentMoveVec.current.y = 0; }
+      else if (['ArrowRight','d'].includes(e.key)) { currentMoveVec.current.x = 1; currentMoveVec.current.y = 0; }
       if (e.code==='Space') fireProjectile();
     };
     const ku = (e:KeyboardEvent) => {
-      if (['ArrowUp','ArrowDown','w','s'].includes(e.key)) currentMoveVec.current.y = 0;
-      else if (['ArrowLeft','ArrowRight','a','d'].includes(e.key)) currentMoveVec.current.x = 0;
+      // إزالة منطق تصفير الحركة لضمان استمرارها
     };
     window.addEventListener('keydown', kd); window.addEventListener('keyup', ku);
     rafRef.current = requestAnimationFrame(update);
@@ -621,48 +621,8 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
       
       <div className="mobile-ui-container flex items-end justify-between p-6 pb-12">
         
-        {/* Left Side: Directional Arrows (Moderate Size, High Transparency) */}
-        <div className="flex items-center justify-center ml-2 mb-4">
-           <div className="relative w-36 h-36 bg-white/5 rounded-full border border-cyan-500/10 flex items-center justify-center">
-              {/* Up */}
-              <button 
-                onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current.y = -1; }} 
-                onTouchEnd={(e) => { e.preventDefault(); currentMoveVec.current.y = 0; }}
-                className="joystick-btn absolute top-1 w-12 h-12 rounded-full flex items-center justify-center"
-              >
-                <svg className="w-6 h-6 text-cyan-400/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 15l7-7 7 7" /></svg>
-              </button>
-              {/* Down */}
-              <button 
-                onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current.y = 1; }} 
-                onTouchEnd={(e) => { e.preventDefault(); currentMoveVec.current.y = 0; }}
-                className="joystick-btn absolute bottom-1 w-12 h-12 rounded-full flex items-center justify-center"
-              >
-                <svg className="w-6 h-6 text-cyan-400/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" /></svg>
-              </button>
-              {/* Left */}
-              <button 
-                onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current.x = -1; }} 
-                onTouchEnd={(e) => { e.preventDefault(); currentMoveVec.current.x = 0; }}
-                className="joystick-btn absolute left-1 w-12 h-12 rounded-full flex items-center justify-center"
-              >
-                <svg className="w-6 h-6 text-cyan-400/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" /></svg>
-              </button>
-              {/* Right */}
-              <button 
-                onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current.x = 1; }} 
-                onTouchEnd={(e) => { e.preventDefault(); currentMoveVec.current.x = 0; }}
-                className="joystick-btn absolute right-1 w-12 h-12 rounded-full flex items-center justify-center"
-              >
-                <svg className="w-6 h-6 text-cyan-400/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" /></svg>
-              </button>
-              {/* Center */}
-              <div className="w-4 h-4 rounded-full bg-cyan-400/10 border border-cyan-500/20 animate-pulse" />
-           </div>
-        </div>
-
-        {/* Right Side: Small Shoot Button (High Transparency) */}
-        <div className="flex items-center justify-center mr-4 mb-8">
+        {/* Left Side: Small Shoot Button */}
+        <div className="flex items-center justify-center ml-4 mb-8">
           <button 
             onTouchStart={(e) => { e.preventDefault(); fireProjectile(); }}
             className="shoot-btn w-20 h-20 rounded-full flex items-center justify-center"
@@ -674,6 +634,42 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
                 <div className="w-2 h-2 bg-red-500 rounded-full shadow-[0_0_10px_#ef4444]" />
             </div>
           </button>
+        </div>
+
+        {/* Right Side: Directional Arrows (Continuous Movement Implementation) */}
+        <div className="flex items-center justify-center mr-2 mb-4">
+           <div className="relative w-36 h-36 bg-white/5 rounded-full border border-cyan-500/10 flex items-center justify-center">
+              {/* Up */}
+              <button 
+                onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current.y = -1; currentMoveVec.current.x = 0; }} 
+                className="joystick-btn absolute top-1 w-12 h-12 rounded-full flex items-center justify-center"
+              >
+                <svg className="w-6 h-6 text-cyan-400/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 15l7-7 7 7" /></svg>
+              </button>
+              {/* Down */}
+              <button 
+                onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current.y = 1; currentMoveVec.current.x = 0; }} 
+                className="joystick-btn absolute bottom-1 w-12 h-12 rounded-full flex items-center justify-center"
+              >
+                <svg className="w-6 h-6 text-cyan-400/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" /></svg>
+              </button>
+              {/* Left */}
+              <button 
+                onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current.x = -1; currentMoveVec.current.y = 0; }} 
+                className="joystick-btn absolute left-1 w-12 h-12 rounded-full flex items-center justify-center"
+              >
+                <svg className="w-6 h-6 text-cyan-400/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" /></svg>
+              </button>
+              {/* Right */}
+              <button 
+                onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current.x = 1; currentMoveVec.current.y = 0; }} 
+                className="joystick-btn absolute right-1 w-12 h-12 rounded-full flex items-center justify-center"
+              >
+                <svg className="w-6 h-6 text-cyan-400/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" /></svg>
+              </button>
+              {/* Center */}
+              <div className="w-4 h-4 rounded-full bg-cyan-400/10 border border-cyan-500/20 animate-pulse" />
+           </div>
         </div>
 
       </div>
