@@ -9,7 +9,7 @@ import { LEVELS as HARDCODED_LEVELS } from './constants';
 import { supabase } from './lib/supabase';
 
 /**
- * بيانات العباقرة الوهميين (الاحتياطية)
+ * بيانات العباقرة الوهميين (الاحتياطية لضمان عدم خلو القائمة)
  */
 const FAKE_GENIUSES = [
   { name: "الطيار عثمان", score: 1200 },
@@ -172,15 +172,15 @@ const App: React.FC = () => {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   
-  // الحالة الجديدة لتخزين بيانات لوحة الترتيب النهائية
+  // تخزين بيانات لوحة الترتيب
   const [leaderboardList, setLeaderboardList] = useState<any[]>([]);
 
   /**
-   * دالة جلب لوحة المتصدرين الحقيقية ودمجها مع الوهميين
+   * دالة جلب لوحة المتصدرين الحقيقية وتحديثها فوراً
    */
   const fetchLeaderboard = useCallback(async () => {
     try {
-      // 1. جلب البيانات من Supabase
+      // 1. استعلام Supabase كما هو مطلوب
       const { data: realProfiles, error } = await supabase
         .from('profiles')
         .select('email, high_score')
@@ -188,30 +188,42 @@ const App: React.FC = () => {
 
       if (error) throw error;
 
-      // 2. معالجة بيانات الطيارين الحقيقيين (الاسم هو ما قبل الـ @)
+      // 2. معالجة البيانات: تحويل البريد إلى "الطيار [الاسم]"
       const mappedRealPlayers = (realProfiles || []).map(p => ({
         name: `الطيار ${p.email.split('@')[0]}`,
-        score: p.high_score,
-        isUser: p.email.toLowerCase() === userEmail?.toLowerCase()
+        score: p.high_score || 0,
+        isUser: p.email?.toLowerCase() === userEmail?.toLowerCase()
       }));
 
-      // 3. دمج الحقيقيين مع الوهميين
-      const bots = FAKE_GENIUSES.map(g => ({ name: g.name, score: g.score, isBot: true }));
+      // 3. دمج الطيارين الوهميين لضمان عدم خلو اللوحة
+      const bots = FAKE_GENIUSES.map(g => ({ 
+        name: g.name, 
+        score: g.score, 
+        isBot: true,
+        isUser: false
+      }));
       
-      // دمج وفرز القائمة النهائية
+      // 4. دمج الجميع وفرزهم حسب النقاط
       const fullList = [...mappedRealPlayers, ...bots]
         .sort((a, b) => b.score - a.score)
-        .slice(0, 10); // عرض أفضل 10 فقط للتنظيم
+        .slice(0, 10); // عرض أفضل 10 فقط
 
       setLeaderboardList(fullList);
     } catch (err) {
       console.error("Leaderboard Sync Error:", err);
-      // في حالة الخطأ، نكتفي بالوهميين + المستخدم الحالي
+      // في حالة الخطأ: عرض الطيارين الوهميين مع المستخدم الحالي
       const user = { name: userEmail ? `الطيار ${userEmail.split('@')[0]}` : "أنت (الطيار الحالي)", score: score, isUser: true };
       const fallback = [...FAKE_GENIUSES, user].sort((a, b) => b.score - a.score);
       setLeaderboardList(fallback);
     }
   }, [userEmail, score]);
+
+  // تحديث لوحة الترتيب فور ظهور شاشة النتائج
+  useEffect(() => {
+    if (gameState === GameState.RESULT || gameState === GameState.GAME_OVER) {
+      fetchLeaderboard();
+    }
+  }, [gameState, fetchLeaderboard]);
 
   const syncQuestions = async (target: string | null) => {
     try {
@@ -282,7 +294,6 @@ const App: React.FC = () => {
   };
 
   const onMissionEnd = async (isGameOver: boolean) => {
-    // تحديث النتيجة في Supabase إذا كان المستخدم مسجلاً
     if (isPremium && userEmail) {
       try {
         const { data: profile } = await supabase.from('profiles').select('high_score').eq('email', userEmail.toLowerCase()).single();
@@ -292,8 +303,7 @@ const App: React.FC = () => {
       } catch (e) { console.error("Score Sync Failed", e); }
     }
     
-    // جلب لوحة الصدارة فوراً قبل الانتقال للشاشة
-    await fetchLeaderboard();
+    // شاشة النهاية ستُحدث القائمة تلقائياً عبر useEffect
     setGameState(isGameOver ? GameState.GAME_OVER : GameState.RESULT);
   };
 
@@ -451,39 +461,45 @@ const App: React.FC = () => {
             <p className="text-cyan-400 font-bold mb-4 orbitron text-xs tracking-[0.5em] uppercase">Total Credits Recovered</p>
           </div>
 
-          <div className="w-full max-w-2xl bg-black/60 border border-cyan-500/30 rounded-[3rem] p-8 mb-10 shadow-[0_0_50px_rgba(0,210,255,0.1)] overflow-hidden relative">
+          <div className="w-full max-w-2xl bg-black/60 border border-cyan-500/30 rounded-[3rem] p-8 mb-10 shadow-[0_0_50px_rgba(0,210,255,0.1)] relative">
             <h3 className="text-cyan-400 font-black orbitron text-lg mb-8 uppercase tracking-[0.3em] border-b border-cyan-500/20 pb-4">ترتيب أحسن العباقرة</h3>
             
-            <div className="space-y-4">
-              {leaderboardList.map((u, i) => (
-                <div key={i} className={`flex justify-between items-center p-5 rounded-2xl border transition-all duration-500 
-                  ${u.isUser 
-                    ? 'bg-cyan-500/20 border-cyan-400 scale-[1.02] shadow-[0_0_20px_rgba(0,210,255,0.3)]' 
-                    : 'bg-white/5 border-white/5'}`}>
-                  
-                  <div className="flex items-center gap-6">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center orbitron font-black text-sm
-                      ${i === 0 ? 'bg-yellow-400 text-black shadow-lg' : i === 1 ? 'bg-gray-300 text-black' : i === 2 ? 'bg-orange-500 text-black' : 'text-gray-500'}`}>
-                      {i + 1}
+            <div className="space-y-4 min-h-[300px]">
+              {leaderboardList.length > 0 ? (
+                leaderboardList.map((u, i) => (
+                  <div key={i} className={`flex justify-between items-center p-5 rounded-2xl border transition-all duration-500 
+                    ${u.isUser 
+                      ? 'bg-cyan-500/20 border-cyan-400 scale-[1.02] shadow-[0_0_20px_rgba(0,210,255,0.3)]' 
+                      : 'bg-white/5 border-white/5'}`}>
+                    
+                    <div className="flex items-center gap-6">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center orbitron font-black text-sm
+                        ${i === 0 ? 'bg-yellow-400 text-black shadow-lg' : i === 1 ? 'bg-gray-300 text-black' : i === 2 ? 'bg-orange-500 text-black' : 'text-gray-500'}`}>
+                        {i + 1}
+                      </div>
+                      <div className="flex flex-col text-right">
+                        <span className={`text-base font-bold orbitron uppercase tracking-tighter ${u.isUser ? 'text-white' : 'text-gray-300'}`}>
+                          {u.name}
+                        </span>
+                        {u.isUser && (
+                          <span className="text-[8px] text-cyan-400 font-black orbitron animate-pulse">CURRENT PILOT</span>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex flex-col text-right">
-                      <span className={`text-base font-bold orbitron uppercase tracking-tighter ${u.isUser ? 'text-white' : 'text-gray-300'}`}>
-                        {u.name}
+                    
+                    <div className="flex flex-col items-end">
+                      <span className={`orbitron font-black text-xl tracking-tighter ${u.isUser ? 'text-cyan-400' : 'text-gray-500'}`}>
+                        {u.score.toLocaleString()}
                       </span>
-                      {u.isUser && (
-                        <span className="text-[8px] text-cyan-400 font-black orbitron animate-pulse">CURRENT PILOT</span>
-                      )}
+                      <span className="text-[6px] text-gray-600 font-bold orbitron uppercase tracking-widest">Points</span>
                     </div>
                   </div>
-                  
-                  <div className="flex flex-col items-end">
-                    <span className={`orbitron font-black text-xl tracking-tighter ${u.isUser ? 'text-cyan-400' : 'text-gray-500'}`}>
-                      {(u.score || u.high_score || 0).toLocaleString()}
-                    </span>
-                    <span className="text-[6px] text-gray-600 font-bold orbitron uppercase tracking-widest">Points</span>
-                  </div>
+                ))
+              ) : (
+                <div className="flex items-center justify-center h-48 text-gray-500 orbitron animate-pulse">
+                  SYNCING NEURAL DATA...
                 </div>
-              ))}
+              )}
             </div>
           </div>
 
