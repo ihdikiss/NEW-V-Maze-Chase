@@ -317,8 +317,8 @@ const App: React.FC = () => {
       )}
 
       {gameState === GameState.LANDING && (
-        <div className="relative z-20 h-full w-full overflow-y-auto flex flex-col items-center justify-center p-4 md:p-8 animate-fade-in">
-          <div className="flex flex-col items-center justify-center min-h-full py-12 w-full">
+        <div className="relative z-20 h-full w-full overflow-y-auto flex flex-col items-center animate-fade-in custom-scrollbar">
+          <div className="flex flex-col items-center justify-center min-h-full py-12 w-full p-4 md:p-8">
             <h1 className="text-4xl md:text-7xl font-black orbitron text-white mb-2 tracking-tighter text-center">9RA O NCHT</h1>
             <h2 className="text-[10px] md:text-xl font-bold text-cyan-400 mb-8 md:mb-12 max-w-lg text-center orbitron uppercase tracking-[0.3em]">Neural Learning Simulation</h2>
             
@@ -373,8 +373,8 @@ const App: React.FC = () => {
       )}
 
       {gameState === GameState.INTRO && (
-        <div className="z-20 h-full w-full overflow-y-auto flex flex-col items-center justify-center animate-fade-in p-6">
-          <div className="flex flex-col items-center justify-center min-h-full py-10 w-full">
+        <div className="z-20 h-full w-full overflow-y-auto flex flex-col items-center animate-fade-in custom-scrollbar">
+          <div className="flex flex-col items-center justify-center min-h-full py-10 w-full p-6">
             <div className="max-w-md w-full bg-black/40 border border-white/10 p-6 md:p-8 rounded-3xl text-center backdrop-blur-md mb-8 md:mb-12">
               <h2 className="text-xl md:text-2xl font-black orbitron mb-4 text-cyan-400">MISSION ADVISORY</h2>
               <p className="text-xs md:text-sm text-gray-300 leading-relaxed mb-4 md:mb-6">
@@ -383,7 +383,7 @@ const App: React.FC = () => {
                 استخدم السهام للتحرك، والمسافة [SPACE] للإطلاق.
               </p>
             </div>
-            <button onClick={() => setGameState(GameState.BRIEFING)} className="w-full max-w-xs py-6 md:py-8 bg-cyan-600 rounded-full font-black orbitron text-lg md:text-2xl shadow-[0_0_40px_rgba(0,210,255,0.4)] animate-pulse">ENGAGE SIMULATION</button>
+            <button onClick={() => setGameState(GameState.BRIEFING)} className="w-full max-w-xs py-6 md:py-8 bg-cyan-600 rounded-full font-black orbitron text-lg md:text-2xl shadow-[0_0_40px_rgba(0,210,255,0.4)] animate-pulse mb-8">ENGAGE SIMULATION</button>
           </div>
         </div>
       )}
@@ -447,8 +447,8 @@ const App: React.FC = () => {
       )}
 
       {(gameState === GameState.RESULT || gameState === GameState.GAME_OVER) && (
-        <div className="z-30 h-full w-full flex flex-col items-center bg-[#050510] p-4 md:p-8 text-center overflow-y-auto animate-fade-in custom-scrollbar">
-          <div className="flex flex-col items-center justify-center min-h-full py-10 w-full">
+        <div className="z-30 h-full w-full flex flex-col items-center bg-[#050510] text-center overflow-y-auto animate-fade-in custom-scrollbar">
+          <div className="flex flex-col items-center justify-center min-h-full py-10 w-full p-4 md:p-8">
             <h1 className={`text-4xl md:text-7xl font-black orbitron mb-4 ${gameState === GameState.GAME_OVER ? 'text-red-500' : 'text-emerald-500'}`}>
               {gameState === GameState.GAME_OVER ? 'SYSTEM FAILURE' : 'MISSION COMPLETE'}
             </h1>
@@ -506,13 +506,15 @@ const App: React.FC = () => {
       )}
 
       {gameState === GameState.PRO_SUCCESS && (
-        <div className="z-30 h-full w-full flex flex-col items-center justify-center bg-[#050510] p-8 text-center animate-fade-in">
-          <div className="w-24 h-24 md:w-32 md:h-32 bg-emerald-500/20 border-4 border-emerald-500 text-emerald-500 rounded-full flex items-center justify-center mb-8 md:top-10 animate-bounce shadow-[0_0_50px_rgba(16,185,129,0.3)]">
-            <svg className="w-12 h-12 md:w-16 md:h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M5 13l4 4L19 7"></path></svg>
+        <div className="z-30 h-full w-full flex flex-col items-center justify-center bg-[#050510] p-8 text-center animate-fade-in custom-scrollbar">
+          <div className="flex flex-col items-center justify-center min-h-full py-10 w-full">
+            <div className="w-24 h-24 md:w-32 md:h-32 bg-emerald-500/20 border-4 border-emerald-500 text-emerald-500 rounded-full flex items-center justify-center mb-8 animate-bounce shadow-[0_0_50px_rgba(16,185,129,0.3)]">
+              <svg className="w-12 h-12 md:w-16 md:h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M5 13l4 4L19 7"></path></svg>
+            </div>
+            <h1 className="text-3xl md:text-5xl font-black orbitron text-white mb-4 tracking-tighter">DATA LINK ESTABLISHED</h1>
+            <p className="text-xs md:text-gray-400 mb-8 md:mb-10 max-w-sm font-bold leading-relaxed">أهلاً بك أيها العبقري. بصمتك الرقمية أصبحت جزءاً من النظام الآن. سيتم تسجيل كل إنجازاتك في لوحة الشرف.</p>
+            <button onClick={() => setGameState(GameState.INTRO)} className="w-full max-w-xs py-5 md:py-6 bg-emerald-600 rounded-2xl font-black orbitron text-white shadow-2xl hover:bg-emerald-500 transition-all active:scale-95 mb-10">PROCEED TO HUB</button>
           </div>
-          <h1 className="text-3xl md:text-5xl font-black orbitron text-white mb-4 tracking-tighter">DATA LINK ESTABLISHED</h1>
-          <p className="text-xs md:text-gray-400 mb-8 md:mb-10 max-w-sm font-bold leading-relaxed">أهلاً بك أيها العبقري. بصمتك الرقمية أصبحت جزءاً من النظام الآن. سيتم تسجيل كل إنجازاتك في لوحة الشرف.</p>
-          <button onClick={() => setGameState(GameState.INTRO)} className="w-full max-w-xs py-5 md:py-6 bg-emerald-600 rounded-2xl font-black orbitron text-white shadow-2xl hover:bg-emerald-500 transition-all active:scale-95">PROCEED TO HUB</button>
         </div>
       )}
     </div>
