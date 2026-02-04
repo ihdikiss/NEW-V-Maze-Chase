@@ -180,7 +180,6 @@ const App: React.FC = () => {
    */
   const fetchLeaderboard = useCallback(async () => {
     try {
-      // 1. استعلام Supabase كما هو مطلوب
       const { data: realProfiles, error } = await supabase
         .from('profiles')
         .select('email, high_score')
@@ -188,14 +187,12 @@ const App: React.FC = () => {
 
       if (error) throw error;
 
-      // 2. معالجة البيانات: تحويل البريد إلى "الطيار [الاسم]"
       const mappedRealPlayers = (realProfiles || []).map(p => ({
         name: `الطيار ${p.email.split('@')[0]}`,
         score: p.high_score || 0,
         isUser: p.email?.toLowerCase() === userEmail?.toLowerCase()
       }));
 
-      // 3. دمج الطيارين الوهميين لضمان عدم خلو اللوحة
       const bots = FAKE_GENIUSES.map(g => ({ 
         name: g.name, 
         score: g.score, 
@@ -203,22 +200,19 @@ const App: React.FC = () => {
         isUser: false
       }));
       
-      // 4. دمج الجميع وفرزهم حسب النقاط
       const fullList = [...mappedRealPlayers, ...bots]
         .sort((a, b) => b.score - a.score)
-        .slice(0, 10); // عرض أفضل 10 فقط
+        .slice(0, 10);
 
       setLeaderboardList(fullList);
     } catch (err) {
       console.error("Leaderboard Sync Error:", err);
-      // في حالة الخطأ: عرض الطيارين الوهميين مع المستخدم الحالي
       const user = { name: userEmail ? `الطيار ${userEmail.split('@')[0]}` : "أنت (الطيار الحالي)", score: score, isUser: true };
       const fallback = [...FAKE_GENIUSES, user].sort((a, b) => b.score - a.score);
       setLeaderboardList(fallback);
     }
   }, [userEmail, score]);
 
-  // تحديث لوحة الترتيب فور ظهور شاشة النتائج
   useEffect(() => {
     if (gameState === GameState.RESULT || gameState === GameState.GAME_OVER) {
       fetchLeaderboard();
@@ -302,8 +296,6 @@ const App: React.FC = () => {
         }
       } catch (e) { console.error("Score Sync Failed", e); }
     }
-    
-    // شاشة النهاية ستُحدث القائمة تلقائياً عبر useEffect
     setGameState(isGameOver ? GameState.GAME_OVER : GameState.RESULT);
   };
 
@@ -325,36 +317,38 @@ const App: React.FC = () => {
       )}
 
       {gameState === GameState.LANDING && (
-        <div className="relative z-20 h-full w-full flex flex-col items-center justify-center p-8 animate-fade-in">
-          <h1 className="text-5xl md:text-7xl font-black orbitron text-white mb-2 tracking-tighter text-center">9RA O NCHT</h1>
-          <h2 className="text-sm md:text-xl font-bold text-cyan-400 mb-12 max-w-lg text-center orbitron uppercase tracking-[0.3em]">Neural Learning Simulation</h2>
-          
-          <div className="flex flex-col items-center gap-8 w-full">
-            <button 
-              onClick={() => { setScore(0); setLives(3); setLevelIndex(0); setGameState(GameState.INTRO); }} 
-              className="group relative py-8 px-20 bg-cyan-600 rounded-[2.5rem] font-black orbitron text-3xl shadow-[0_0_50px_rgba(0,210,255,0.4)] hover:scale-105 active:scale-95 transition-all text-white animate-pulse"
-            >
-              النسخة المجانية
-              <div className="absolute inset-0 rounded-[2.5rem] bg-cyan-400/20 blur-xl opacity-0 group-hover:opacity-100"></div>
-            </button>
+        <div className="relative z-20 h-full w-full overflow-y-auto flex flex-col items-center justify-center p-4 md:p-8 animate-fade-in">
+          <div className="flex flex-col items-center justify-center min-h-full py-12 w-full">
+            <h1 className="text-4xl md:text-7xl font-black orbitron text-white mb-2 tracking-tighter text-center">9RA O NCHT</h1>
+            <h2 className="text-[10px] md:text-xl font-bold text-cyan-400 mb-8 md:mb-12 max-w-lg text-center orbitron uppercase tracking-[0.3em]">Neural Learning Simulation</h2>
             
-            {!isPremium ? (
+            <div className="flex flex-col items-center gap-6 md:gap-8 w-full max-w-md">
               <button 
-                onClick={() => setShowAuthModal(true)} 
-                className="group relative px-10 py-4 bg-gradient-to-r from-purple-600/20 to-cyan-600/20 border border-cyan-500/40 rounded-2xl hover:scale-105 transition-all shadow-xl overflow-hidden"
+                onClick={() => { setScore(0); setLives(3); setLevelIndex(0); setGameState(GameState.INTRO); }} 
+                className="group relative w-full py-6 md:py-8 bg-cyan-600 rounded-[2rem] md:rounded-[2.5rem] font-black orbitron text-xl md:text-3xl shadow-[0_0_50px_rgba(0,210,255,0.4)] hover:scale-105 active:scale-95 transition-all text-white animate-pulse"
               >
-                <div className="absolute inset-0 bg-white/10 -translate-x-full group-hover:animate-shimmer"></div>
-                <div className="flex items-center gap-3 relative z-10">
-                  <span className="bg-cyan-500 text-black text-[9px] font-black px-2 py-0.5 rounded orbitron">PRO</span>
-                  <span className="text-cyan-400 text-sm font-black tracking-wide">النسخة المميزة للعباقرة</span>
-                </div>
+                النسخة المجانية
+                <div className="absolute inset-0 rounded-[2rem] md:rounded-[2.5rem] bg-cyan-400/20 blur-xl opacity-0 group-hover:opacity-100"></div>
               </button>
-            ) : (
-              <div className="bg-white/5 border border-white/10 px-6 py-2 rounded-full backdrop-blur-md flex items-center gap-2">
-                <div className="w-2 h-2 bg-emerald-500 rounded-full animate-ping"></div>
-                <span className="text-emerald-400 text-xs font-bold orbitron uppercase">{userEmail?.split('@')[0]} : AUTHORIZED</span>
-              </div>
-            )}
+              
+              {!isPremium ? (
+                <button 
+                  onClick={() => setShowAuthModal(true)} 
+                  className="group relative w-full px-6 py-4 bg-gradient-to-r from-purple-600/20 to-cyan-600/20 border border-cyan-500/40 rounded-2xl hover:scale-105 transition-all shadow-xl overflow-hidden"
+                >
+                  <div className="absolute inset-0 bg-white/10 -translate-x-full group-hover:animate-shimmer"></div>
+                  <div className="flex items-center justify-center gap-3 relative z-10">
+                    <span className="bg-cyan-500 text-black text-[9px] font-black px-2 py-0.5 rounded orbitron">PRO</span>
+                    <span className="text-cyan-400 text-xs font-black tracking-wide">النسخة المميزة للعباقرة</span>
+                  </div>
+                </button>
+              ) : (
+                <div className="bg-white/5 border border-white/10 px-6 py-2 rounded-full backdrop-blur-md flex items-center gap-2">
+                  <div className="w-2 h-2 bg-emerald-500 rounded-full animate-ping"></div>
+                  <span className="text-emerald-400 text-xs font-bold orbitron uppercase">{userEmail?.split('@')[0]} : AUTHORIZED</span>
+                </div>
+              )}
+            </div>
           </div>
 
           {showAuthModal && (
@@ -379,16 +373,18 @@ const App: React.FC = () => {
       )}
 
       {gameState === GameState.INTRO && (
-        <div className="z-20 h-full w-full flex flex-col items-center justify-center animate-fade-in p-8">
-          <div className="max-w-md bg-black/40 border border-white/10 p-8 rounded-3xl text-center backdrop-blur-md mb-12">
-            <h2 className="text-2xl font-black orbitron mb-4 text-cyan-400">MISSION ADVISORY</h2>
-            <p className="text-sm text-gray-300 leading-relaxed mb-6">
-              مرحباً بك أيها الطيار. هدفك هو فك شفرات الأسئلة الدراسية المفقودة في المتاهة. ابحث عن منطقة الإجابة الصحيحة وتجنب الحراس السايبورغ. 
-              <br/><br/>
-              استخدم السهام للتحرك، والمسافة [SPACE] للإطلاق.
-            </p>
+        <div className="z-20 h-full w-full overflow-y-auto flex flex-col items-center justify-center animate-fade-in p-6">
+          <div className="flex flex-col items-center justify-center min-h-full py-10 w-full">
+            <div className="max-w-md w-full bg-black/40 border border-white/10 p-6 md:p-8 rounded-3xl text-center backdrop-blur-md mb-8 md:mb-12">
+              <h2 className="text-xl md:text-2xl font-black orbitron mb-4 text-cyan-400">MISSION ADVISORY</h2>
+              <p className="text-xs md:text-sm text-gray-300 leading-relaxed mb-4 md:mb-6">
+                مرحباً بك أيها الطيار. هدفك هو فك شفرات الأسئلة الدراسية المفقودة في المتاهة. ابحث عن منطقة الإجابة الصحيحة وتجنب الحراس السايبورغ. 
+                <br/><br/>
+                استخدم السهام للتحرك، والمسافة [SPACE] للإطلاق.
+              </p>
+            </div>
+            <button onClick={() => setGameState(GameState.BRIEFING)} className="w-full max-w-xs py-6 md:py-8 bg-cyan-600 rounded-full font-black orbitron text-lg md:text-2xl shadow-[0_0_40px_rgba(0,210,255,0.4)] animate-pulse">ENGAGE SIMULATION</button>
           </div>
-          <button onClick={() => setGameState(GameState.BRIEFING)} className="px-20 py-8 bg-cyan-600 rounded-full font-black orbitron text-2xl shadow-[0_0_40px_rgba(0,210,255,0.4)] animate-pulse">ENGAGE SIMULATION</button>
         </div>
       )}
 
@@ -451,70 +447,72 @@ const App: React.FC = () => {
       )}
 
       {(gameState === GameState.RESULT || gameState === GameState.GAME_OVER) && (
-        <div className="z-30 h-full w-full flex flex-col items-center justify-start bg-[#050510] p-8 text-center overflow-y-auto pt-[5vh] animate-fade-in custom-scrollbar pb-20">
-          <h1 className={`text-5xl md:text-7xl font-black orbitron mb-4 ${gameState === GameState.GAME_OVER ? 'text-red-500' : 'text-emerald-500'}`}>
-            {gameState === GameState.GAME_OVER ? 'SYSTEM FAILURE' : 'MISSION COMPLETE'}
-          </h1>
-          
-          <div className="bg-white/5 border border-white/10 rounded-[2.5rem] p-10 w-full max-w-2xl mb-8 shadow-2xl backdrop-blur-xl">
-            <p className="text-7xl font-black orbitron text-white mb-2 tracking-tighter">{score.toString().padStart(6, '0')}</p>
-            <p className="text-cyan-400 font-bold mb-4 orbitron text-xs tracking-[0.5em] uppercase">Total Credits Recovered</p>
-          </div>
-
-          <div className="w-full max-w-2xl bg-black/60 border border-cyan-500/30 rounded-[3rem] p-8 mb-10 shadow-[0_0_50px_rgba(0,210,255,0.1)] relative">
-            <h3 className="text-cyan-400 font-black orbitron text-lg mb-8 uppercase tracking-[0.3em] border-b border-cyan-500/20 pb-4">ترتيب أحسن العباقرة</h3>
+        <div className="z-30 h-full w-full flex flex-col items-center bg-[#050510] p-4 md:p-8 text-center overflow-y-auto animate-fade-in custom-scrollbar">
+          <div className="flex flex-col items-center justify-center min-h-full py-10 w-full">
+            <h1 className={`text-4xl md:text-7xl font-black orbitron mb-4 ${gameState === GameState.GAME_OVER ? 'text-red-500' : 'text-emerald-500'}`}>
+              {gameState === GameState.GAME_OVER ? 'SYSTEM FAILURE' : 'MISSION COMPLETE'}
+            </h1>
             
-            <div className="space-y-4 min-h-[300px]">
-              {leaderboardList.length > 0 ? (
-                leaderboardList.map((u, i) => (
-                  <div key={i} className={`flex justify-between items-center p-5 rounded-2xl border transition-all duration-500 
-                    ${u.isUser 
-                      ? 'bg-cyan-500/20 border-cyan-400 scale-[1.02] shadow-[0_0_20px_rgba(0,210,255,0.3)]' 
-                      : 'bg-white/5 border-white/5'}`}>
-                    
-                    <div className="flex items-center gap-6">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center orbitron font-black text-sm
-                        ${i === 0 ? 'bg-yellow-400 text-black shadow-lg' : i === 1 ? 'bg-gray-300 text-black' : i === 2 ? 'bg-orange-500 text-black' : 'text-gray-500'}`}>
-                        {i + 1}
-                      </div>
-                      <div className="flex flex-col text-right">
-                        <span className={`text-base font-bold orbitron uppercase tracking-tighter ${u.isUser ? 'text-white' : 'text-gray-300'}`}>
-                          {u.name}
-                        </span>
-                        {u.isUser && (
-                          <span className="text-[8px] text-cyan-400 font-black orbitron animate-pulse">CURRENT PILOT</span>
-                        )}
-                      </div>
-                    </div>
-                    
-                    <div className="flex flex-col items-end">
-                      <span className={`orbitron font-black text-xl tracking-tighter ${u.isUser ? 'text-cyan-400' : 'text-gray-500'}`}>
-                        {u.score.toLocaleString()}
-                      </span>
-                      <span className="text-[6px] text-gray-600 font-bold orbitron uppercase tracking-widest">Points</span>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="flex items-center justify-center h-48 text-gray-500 orbitron animate-pulse">
-                  SYNCING NEURAL DATA...
-                </div>
-              )}
+            <div className="bg-white/5 border border-white/10 rounded-[2rem] md:rounded-[2.5rem] p-6 md:p-10 w-full max-w-2xl mb-8 shadow-2xl backdrop-blur-xl">
+              <p className="text-4xl md:text-7xl font-black orbitron text-white mb-2 tracking-tighter">{score.toString().padStart(6, '0')}</p>
+              <p className="text-cyan-400 font-bold mb-4 orbitron text-[10px] tracking-[0.5em] uppercase">Total Credits Recovered</p>
             </div>
-          </div>
 
-          <button onClick={() => setGameState(GameState.LANDING)} className="px-24 py-7 bg-cyan-600 rounded-[2rem] font-black orbitron text-white shadow-[0_0_40px_rgba(0,210,255,0.4)] hover:bg-cyan-500 transition-all mb-10 active:scale-95">REBOOT HUB</button>
+            <div className="w-full max-w-2xl bg-black/60 border border-cyan-500/30 rounded-[2rem] md:rounded-[3rem] p-6 md:p-8 mb-10 shadow-[0_0_50px_rgba(0,210,255,0.1)] relative">
+              <h3 className="text-cyan-400 font-black orbitron text-base md:text-lg mb-6 uppercase tracking-[0.3em] border-b border-cyan-500/20 pb-4">ترتيب أحسن العباقرة</h3>
+              
+              <div className="space-y-3 md:space-y-4">
+                {leaderboardList.length > 0 ? (
+                  leaderboardList.map((u, i) => (
+                    <div key={i} className={`flex justify-between items-center p-3 md:p-5 rounded-2xl border transition-all duration-500 
+                      ${u.isUser 
+                        ? 'bg-cyan-500/20 border-cyan-400 scale-[1.02] shadow-[0_0_20px_rgba(0,210,255,0.3)]' 
+                        : 'bg-white/5 border-white/5'}`}>
+                      
+                      <div className="flex items-center gap-4 md:gap-6">
+                        <div className={`w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center orbitron font-black text-xs md:text-sm
+                          ${i === 0 ? 'bg-yellow-400 text-black shadow-lg' : i === 1 ? 'bg-gray-300 text-black' : i === 2 ? 'bg-orange-500 text-black' : 'text-gray-500'}`}>
+                          {i + 1}
+                        </div>
+                        <div className="flex flex-col text-right">
+                          <span className={`text-xs md:text-base font-bold orbitron uppercase tracking-tighter ${u.isUser ? 'text-white' : 'text-gray-300'}`}>
+                            {u.name}
+                          </span>
+                          {u.isUser && (
+                            <span className="text-[6px] md:text-[8px] text-cyan-400 font-black orbitron animate-pulse">CURRENT PILOT</span>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="flex flex-col items-end">
+                        <span className={`orbitron font-black text-base md:text-xl tracking-tighter ${u.isUser ? 'text-cyan-400' : 'text-gray-500'}`}>
+                          {u.score.toLocaleString()}
+                        </span>
+                        <span className="text-[5px] md:text-[6px] text-gray-600 font-bold orbitron uppercase tracking-widest">Points</span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="flex items-center justify-center h-32 text-gray-500 orbitron animate-pulse">
+                    SYNCING NEURAL DATA...
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <button onClick={() => setGameState(GameState.LANDING)} className="w-full max-w-sm py-5 md:py-7 bg-cyan-600 rounded-[1.5rem] md:rounded-[2rem] font-black orbitron text-white shadow-[0_0_40px_rgba(0,210,255,0.4)] hover:bg-cyan-500 transition-all mb-10 active:scale-95">REBOOT HUB</button>
+          </div>
         </div>
       )}
 
       {gameState === GameState.PRO_SUCCESS && (
         <div className="z-30 h-full w-full flex flex-col items-center justify-center bg-[#050510] p-8 text-center animate-fade-in">
-          <div className="w-32 h-32 bg-emerald-500/20 border-4 border-emerald-500 text-emerald-500 rounded-full flex items-center justify-center mb-10 animate-bounce shadow-[0_0_50px_rgba(16,185,129,0.3)]">
-            <svg className="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M5 13l4 4L19 7"></path></svg>
+          <div className="w-24 h-24 md:w-32 md:h-32 bg-emerald-500/20 border-4 border-emerald-500 text-emerald-500 rounded-full flex items-center justify-center mb-8 md:top-10 animate-bounce shadow-[0_0_50px_rgba(16,185,129,0.3)]">
+            <svg className="w-12 h-12 md:w-16 md:h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M5 13l4 4L19 7"></path></svg>
           </div>
-          <h1 className="text-5xl font-black orbitron text-white mb-4 tracking-tighter">DATA LINK ESTABLISHED</h1>
-          <p className="text-gray-400 mb-10 max-w-sm font-bold leading-relaxed">أهلاً بك أيها العبقري. بصمتك الرقمية أصبحت جزءاً من النظام الآن. سيتم تسجيل كل إنجازاتك في لوحة الشرف.</p>
-          <button onClick={() => setGameState(GameState.INTRO)} className="px-20 py-6 bg-emerald-600 rounded-2xl font-black orbitron text-white shadow-2xl hover:bg-emerald-500 transition-all active:scale-95">PROCEED TO HUB</button>
+          <h1 className="text-3xl md:text-5xl font-black orbitron text-white mb-4 tracking-tighter">DATA LINK ESTABLISHED</h1>
+          <p className="text-xs md:text-gray-400 mb-8 md:mb-10 max-w-sm font-bold leading-relaxed">أهلاً بك أيها العبقري. بصمتك الرقمية أصبحت جزءاً من النظام الآن. سيتم تسجيل كل إنجازاتك في لوحة الشرف.</p>
+          <button onClick={() => setGameState(GameState.INTRO)} className="w-full max-w-xs py-5 md:py-6 bg-emerald-600 rounded-2xl font-black orbitron text-white shadow-2xl hover:bg-emerald-500 transition-all active:scale-95">PROCEED TO HUB</button>
         </div>
       )}
     </div>
