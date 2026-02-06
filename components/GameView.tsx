@@ -1,4 +1,3 @@
-
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { TILE_SIZE, PLAYER_SPEED, ENEMY_SPEED_BASE, MAZE_STYLE, PROJECTILE_SPEED } from '../constants';
 import { CameraMode, Position } from '../types';
@@ -566,10 +565,11 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     <div ref={containerRef} className="absolute inset-0 w-full h-full flex items-center justify-center bg-[#050510]">
       <canvas ref={canvasRef} width={dimensions.width} height={dimensions.height} className="block" />
       
+      {/* 🎮 MOBILE CONTROLS SYSTEM */}
       <style>{`
         .mobile-ui-container {
           position: fixed !important;
-          bottom: 5% !important;
+          bottom: 5% !important; /* Ergonomic 5% height */
           left: 0 !important;
           right: 0 !important;
           z-index: 99999 !important;
@@ -589,6 +589,7 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
           }
         }
 
+        /* 🎮 D-PAD (BOTTOM LEFT) */
         .dpad-panel {
           pointer-events: auto !important;
           display: grid !important;
@@ -599,7 +600,7 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
           grid-template-columns: repeat(3, 3.2rem) !important;
           grid-template-rows: repeat(3, 3.2rem) !important;
           gap: 6px !important;
-          opacity: 0.4 !important;
+          opacity: 0.4 !important; /* Semi-transparent 0.4 */
           transition: opacity 0.2s, transform 0.1s;
           touch-action: none !important;
         }
@@ -607,7 +608,7 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
         .dpad-panel:active { opacity: 0.9 !important; }
 
         .dpad-btn {
-          background: rgba(0, 210, 255, 0.15) !important;
+          background: rgba(0, 210, 255, 0.1) !important;
           display: flex !important;
           align-items: center !important;
           justify-content: center !important;
@@ -616,15 +617,14 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
           touch-action: none !important;
           border: 1.5px solid rgba(0, 210, 255, 0.5) !important;
           border-radius: 0.8rem !important;
-          box-shadow: 0 0 10px rgba(0, 210, 255, 0.2);
-          position: relative;
+          box-shadow: 0 0 15px rgba(0, 210, 255, 0.2); /* Neon Cyan Glow */
+          padding: 1.2rem !important; /* Large Hitbox */
         }
 
         .dpad-btn:active {
           background: rgba(0, 210, 255, 0.4) !important;
           transform: scale(0.9);
-          box-shadow: 0 0 20px rgba(0, 210, 255, 0.6);
-          border-color: #00f2ff !important;
+          box-shadow: 0 0 25px rgba(0, 210, 255, 0.6);
         }
 
         .btn-up { grid-area: up; }
@@ -637,13 +637,9 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
           height: 1.8rem; 
           fill: #00f2ff; 
           filter: drop-shadow(0 0 8px #00f2ff);
-          transition: filter 0.2s;
         }
         
-        .dpad-btn:active .arrow-svg {
-          filter: drop-shadow(0 0 15px #00f2ff) brightness(1.2);
-        }
-
+        /* Fixed Visual Orientations */
         .rotate-up { transform: rotate(0deg); }
         .rotate-down { transform: rotate(180deg); }
         .rotate-left { transform: rotate(-90deg); }
@@ -655,69 +651,57 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
           align-items: center;
           justify-content: center;
         }
-        
         .center-dot {
-          width: 0.5rem;
-          height: 0.5rem;
+          width: 0.5rem; height: 0.5rem;
           background: rgba(0, 210, 255, 0.3);
           border-radius: 50%;
-          box-shadow: 0 0 8px rgba(0, 210, 255, 0.5);
         }
 
+        /* 🎮 BOMB BUTTON (BOTTOM RIGHT) */
         .shoot-btn-wrapper {
           pointer-events: auto !important;
-          opacity: 0.4 !important;
-          transition: opacity 0.2s, transform 0.1s;
+          opacity: 0.4 !important; /* Semi-transparent 0.4 */
+          transition: opacity 0.2s;
           touch-action: none !important;
         }
         .shoot-btn-wrapper:active { opacity: 0.9 !important; }
 
         .shoot-btn-circle {
-          width: 5rem;
-          height: 5rem;
+          width: 5.5rem;
+          height: 5.5rem;
           background: rgba(255, 159, 67, 0.05) !important; 
-          border: 3.5px solid #ff9f43 !important; 
+          border: 3.5px solid #ff9f43 !important; /* Neon Orange Glow */
           border-radius: 50% !important;
           display: flex;
           align-items: center;
           justify-content: center;
           transition: all 0.15s;
-          box-shadow: 0 0 20px rgba(255, 159, 67, 0.3);
+          padding: 1.2rem !important; /* Large Hitbox */
+          box-shadow: 0 0 25px rgba(255, 159, 67, 0.4);
           touch-action: none !important;
         }
 
         .shoot-btn-circle:active {
           transform: scale(0.85);
           background: rgba(255, 159, 67, 0.3) !important;
-          box-shadow: 0 0 35px rgba(255, 159, 67, 0.7);
-          border-color: #ffb167 !important;
+          box-shadow: 0 0 45px rgba(255, 159, 67, 0.8);
         }
 
         .bomb-text {
           font-family: 'Orbitron', sans-serif;
           font-weight: 900;
-          font-size: 0.85rem;
+          font-size: 0.9rem;
           color: #ff9f43;
-          letter-spacing: 1.5px;
+          letter-spacing: 2px;
           text-shadow: 0 0 10px #ff9f43;
         }
       `}</style>
       
       <div className="mobile-ui-container">
         
-        {/* Action Button (BOMB) - Now on Bottom Left */}
-        <div className="shoot-btn-wrapper">
-          <button 
-            onTouchStart={(e) => { e.preventDefault(); fireProjectile(); }}
-            className="shoot-btn-circle"
-          >
-            <span className="bomb-text">BOMB</span>
-          </button>
-        </div>
-
-        {/* D-PAD - Now on Bottom Right */}
+        {/* 🎮 D-PAD (Bottom Left) - Corrected Logical/Visual Mapping */}
         <div className="dpad-panel">
-          {/* Up */}
+          {/* UP Button - Moves Y -1 */}
           <button 
             onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current = { x: 0, y: -1 }; }} 
             onTouchEnd={stopMovement}
@@ -725,7 +709,8 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
           >
             <svg className="arrow-svg rotate-up" viewBox="0 0 24 24"><path d="M12 4l-9 15h18l-9-15z"/></svg>
           </button>
-          {/* Down */}
+          
+          {/* DOWN Button - Moves Y +1 */}
           <button 
             onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current = { x: 0, y: 1 }; }} 
             onTouchEnd={stopMovement}
@@ -733,7 +718,8 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
           >
             <svg className="arrow-svg rotate-down" viewBox="0 0 24 24"><path d="M12 4l-9 15h18l-9-15z"/></svg>
           </button>
-          {/* Left */}
+          
+          {/* LEFT Button - Moves X -1 */}
           <button 
             onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current = { x: -1, y: 0 }; }} 
             onTouchEnd={stopMovement}
@@ -741,7 +727,8 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
           >
             <svg className="arrow-svg rotate-left" viewBox="0 0 24 24"><path d="M12 4l-9 15h18l-9-15z"/></svg>
           </button>
-          {/* Right */}
+          
+          {/* RIGHT Button - Moves X +1 */}
           <button 
             onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current = { x: 1, y: 0 }; }} 
             onTouchEnd={stopMovement}
@@ -749,9 +736,20 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
           >
             <svg className="arrow-svg rotate-right" viewBox="0 0 24 24"><path d="M12 4l-9 15h18l-9-15z"/></svg>
           </button>
+          
           <div className="dpad-center">
             <div className="center-dot" />
           </div>
+        </div>
+
+        {/* 🎮 BOMB BUTTON (Bottom Right) */}
+        <div className="shoot-btn-wrapper">
+          <button 
+            onTouchStart={(e) => { e.preventDefault(); fireProjectile(); }}
+            className="shoot-btn-circle"
+          >
+            <span className="bomb-text">BOMB</span>
+          </button>
         </div>
 
       </div>
