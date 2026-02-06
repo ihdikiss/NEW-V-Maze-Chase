@@ -17,10 +17,6 @@ interface Projectile {
   x: number; y: number; vx: number; vy: number; id: string;
 }
 
-interface Explosion {
-  x: number; y: number; life: number; id: string;
-}
-
 const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, onEnemyHit, onAmmoChange, cameraMode = CameraMode.CHASE, isTransitioning = false }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -42,7 +38,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   const enemiesRef = useRef<any[]>([]);
   const powerUpsRef = useRef<any[]>([]);
   const projectilesRef = useRef<Projectile[]>([]);
-  const explosionsRef = useRef<Explosion[]>([]);
   const rafRef = useRef<number>(0);
   const lastUpdateRef = useRef<number>(performance.now());
   const canCheckAnswerRef = useRef(true);
@@ -124,7 +119,7 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
       { x: 11 * TILE_SIZE + 32, y: 7 * TILE_SIZE + 32, type: 'weapon', picked: false }
     ];
     
-    projectilesRef.current = []; explosionsRef.current = [];
+    projectilesRef.current = [];
     onAmmoChange?.(0);
   }, [levelData, onAmmoChange]);
 
@@ -151,11 +146,11 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   };
 
   const update = useCallback(() => {
-    if (!levelData?.maze) return;
     const now = performance.now();
     let dt = Math.min((now - lastUpdateRef.current) / 1000, 0.1);
     lastUpdateRef.current = now;
 
+    if (!levelData?.maze) return;
     if (isTransitioning) { draw(); rafRef.current = requestAnimationFrame(update); return; }
     if (screenShake > 0) setScreenShake(s => Math.max(0, s - 20 * dt));
 
@@ -248,7 +243,7 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     }
 
     if (!p.isDead && canCheckAnswerRef.current && levelData.maze[pTY]?.[pTX] === 2) {
-      const opt = levelData.options.find((o:any) => o.pos.x === pTX && o.pos.y === pTY);
+      const opt = levelData.options.find((opt:any) => opt.pos.x === pTX && opt.pos.y === pTY);
       if (opt) {
         canCheckAnswerRef.current = false;
         if (opt.isCorrect) { 
@@ -547,20 +542,34 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
       else if (['ArrowRight','d'].includes(e.key)) { currentMoveVec.current.x = 1; currentMoveVec.current.y = 0; }
       if (e.code==='Space') fireProjectile();
     };
+    const ku = (e:KeyboardEvent) => {
+      if (['ArrowUp','w','ArrowDown','s','ArrowLeft','a','ArrowRight','d'].includes(e.key)) {
+        currentMoveVec.current = { x: 0, y: 0 };
+      }
+    };
     window.addEventListener('keydown', kd);
+    window.addEventListener('keyup', ku);
     rafRef.current = requestAnimationFrame(update);
-    return () => { window.removeEventListener('keydown', kd); cancelAnimationFrame(rafRef.current); };
-  }, [update]);
+    return () => { 
+      window.removeEventListener('keydown', kd); 
+      window.removeEventListener('keyup', ku);
+      cancelAnimationFrame(rafRef.current); 
+    };
+  }, [update, isTransitioning]);
+
+  const stopMovement = (e: React.TouchEvent) => {
+    e.preventDefault();
+    currentMoveVec.current = { x: 0, y: 0 };
+  };
 
   return (
     <div ref={containerRef} className="absolute inset-0 w-full h-full flex items-center justify-center bg-[#050510]">
       <canvas ref={canvasRef} width={dimensions.width} height={dimensions.height} className="block" />
       
-      {/* 🚀 STYLES FOR INTEGRATED MOBILE CONTROLS */}
       <style>{`
         .mobile-ui-container {
           position: fixed !important;
-          bottom: 0 !important;
+          bottom: 5% !important;
           left: 0 !important;
           right: 0 !important;
           z-index: 99999 !important;
@@ -569,7 +578,7 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
           touch-action: none !important;
           -webkit-user-select: none !important;
           user-select: none !important;
-          padding: 1rem 1rem 2.5rem 1rem !important; /* Low position */
+          padding: 0 1.5rem !important;
           justify-content: space-between !important;
           align-items: flex-end !important;
         }
@@ -580,127 +589,168 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
           }
         }
 
-        /* 🎮 TRANSPARENT INTEGRATED D-PAD PANEL */
         .dpad-panel {
           pointer-events: auto !important;
-          background: transparent !important; /* Fully transparent panel back */
-          border: none !important;
           display: grid !important;
           grid-template-areas: 
             ". up ."
             "left center right"
             ". down .";
-          grid-template-columns: repeat(3, 2.3rem) !important; /* Smaller size buttons */
-          grid-template-rows: repeat(3, 2.3rem) !important; /* Smaller size buttons */
-          gap: 1px !important; /* Integrated/Connected look */
-          padding: 0px !important;
-          box-shadow: none !important;
+          grid-template-columns: repeat(3, 3.2rem) !important;
+          grid-template-rows: repeat(3, 3.2rem) !important;
+          gap: 6px !important;
+          opacity: 0.4 !important;
+          transition: opacity 0.2s, transform 0.1s;
+          touch-action: none !important;
         }
 
+        .dpad-panel:active { opacity: 0.9 !important; }
+
         .dpad-btn {
-          background: rgba(0, 210, 255, 0.05) !important; /* Very faint tint */
+          background: rgba(0, 210, 255, 0.15) !important;
           display: flex !important;
           align-items: center !important;
           justify-content: center !important;
-          transition: all 0.2s !important;
+          transition: all 0.15s !important;
           -webkit-tap-highlight-color: transparent !important;
           touch-action: none !important;
-          border: 1px solid rgba(0, 210, 255, 0.15) !important; /* Subtle boundary */
+          border: 1.5px solid rgba(0, 210, 255, 0.5) !important;
+          border-radius: 0.8rem !important;
+          box-shadow: 0 0 10px rgba(0, 210, 255, 0.2);
+          position: relative;
         }
 
         .dpad-btn:active {
           background: rgba(0, 210, 255, 0.4) !important;
-          box-shadow: inset 0 0 12px rgba(0, 210, 255, 0.5) !important;
           transform: scale(0.9);
+          box-shadow: 0 0 20px rgba(0, 210, 255, 0.6);
+          border-color: #00f2ff !important;
         }
 
-        .btn-up { grid-area: up; border-radius: 0.5rem 0.5rem 0.1rem 0.1rem !important; }
-        .btn-down { grid-area: down; border-radius: 0.1rem 0.1rem 0.5rem 0.5rem !important; }
-        .btn-left { grid-area: left; border-radius: 0.5rem 0.1rem 0.1rem 0.5rem !important; }
-        .btn-right { grid-area: right; border-radius: 0.1rem 0.5rem 0.5rem 0.1rem !important; }
+        .btn-up { grid-area: up; }
+        .btn-down { grid-area: down; }
+        .btn-left { grid-area: left; }
+        .btn-right { grid-area: right; }
         
+        .arrow-svg { 
+          width: 1.8rem; 
+          height: 1.8rem; 
+          fill: #00f2ff; 
+          filter: drop-shadow(0 0 8px #00f2ff);
+          transition: filter 0.2s;
+        }
+        
+        .dpad-btn:active .arrow-svg {
+          filter: drop-shadow(0 0 15px #00f2ff) brightness(1.2);
+        }
+
+        .rotate-up { transform: rotate(0deg); }
+        .rotate-down { transform: rotate(180deg); }
+        .rotate-left { transform: rotate(-90deg); }
+        .rotate-right { transform: rotate(90deg); }
+
         .dpad-center { 
           grid-area: center; 
-          display: flex; 
-          align-items: center; 
+          display: flex;
+          align-items: center;
           justify-content: center;
-          background: rgba(0, 210, 255, 0.02) !important;
-          border: 1px solid rgba(0, 210, 255, 0.1);
+        }
+        
+        .center-dot {
+          width: 0.5rem;
+          height: 0.5rem;
+          background: rgba(0, 210, 255, 0.3);
+          border-radius: 50%;
+          box-shadow: 0 0 8px rgba(0, 210, 255, 0.5);
         }
 
         .shoot-btn-wrapper {
           pointer-events: auto !important;
-          background: transparent !important;
+          opacity: 0.4 !important;
+          transition: opacity 0.2s, transform 0.1s;
+          touch-action: none !important;
         }
+        .shoot-btn-wrapper:active { opacity: 0.9 !important; }
 
         .shoot-btn-circle {
-          width: 3.5rem; /* Smaller shoot button to match */
-          height: 3.5rem;
-          background: rgba(239, 68, 68, 0.05) !important;
-          border: 2px solid rgba(239, 68, 68, 0.2) !important;
+          width: 5rem;
+          height: 5rem;
+          background: rgba(255, 159, 67, 0.05) !important; 
+          border: 3.5px solid #ff9f43 !important; 
           border-radius: 50% !important;
           display: flex;
           align-items: center;
           justify-content: center;
-          transition: all 0.1s;
-          backdrop-filter: blur(2px);
+          transition: all 0.15s;
+          box-shadow: 0 0 20px rgba(255, 159, 67, 0.3);
+          touch-action: none !important;
         }
 
         .shoot-btn-circle:active {
-          background: rgba(239, 68, 68, 0.3) !important;
           transform: scale(0.85);
+          background: rgba(255, 159, 67, 0.3) !important;
+          box-shadow: 0 0 35px rgba(255, 159, 67, 0.7);
+          border-color: #ffb167 !important;
+        }
+
+        .bomb-text {
+          font-family: 'Orbitron', sans-serif;
+          font-weight: 900;
+          font-size: 0.85rem;
+          color: #ff9f43;
+          letter-spacing: 1.5px;
+          text-shadow: 0 0 10px #ff9f43;
         }
       `}</style>
       
       <div className="mobile-ui-container">
         
-        {/* Left Side: Shoot Button */}
+        {/* Action Button (BOMB) - Now on Bottom Left */}
         <div className="shoot-btn-wrapper">
           <button 
             onTouchStart={(e) => { e.preventDefault(); fireProjectile(); }}
             className="shoot-btn-circle"
           >
-            <div className="relative w-5 h-5 flex items-center justify-center pointer-events-none">
-                <div className="absolute w-full h-px bg-red-500/40" />
-                <div className="absolute h-full w-px bg-red-500/40" />
-                <div className="w-1.5 h-1.5 bg-red-500/80 rounded-full" />
-            </div>
+            <span className="bomb-text">BOMB</span>
           </button>
         </div>
 
-        {/* Right Side: Integrated D-PAD Panel (Small & Transparent) */}
+        {/* D-PAD - Now on Bottom Right */}
         <div className="dpad-panel">
           {/* Up */}
           <button 
-            onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current.y = -1; currentMoveVec.current.x = 0; }} 
+            onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current = { x: 0, y: -1 }; }} 
+            onTouchEnd={stopMovement}
             className="dpad-btn btn-up"
           >
-            <svg className="w-3.5 h-3.5 text-cyan-400/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="5" d="M5 15l7-7 7 7" /></svg>
+            <svg className="arrow-svg rotate-up" viewBox="0 0 24 24"><path d="M12 4l-9 15h18l-9-15z"/></svg>
           </button>
           {/* Down */}
           <button 
-            onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current.y = 1; currentMoveVec.current.x = 0; }} 
+            onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current = { x: 0, y: 1 }; }} 
+            onTouchEnd={stopMovement}
             className="dpad-btn btn-down"
           >
-            <svg className="w-3.5 h-3.5 text-cyan-400/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="5" d="M19 9l-7 7-7-7" /></svg>
+            <svg className="arrow-svg rotate-down" viewBox="0 0 24 24"><path d="M12 4l-9 15h18l-9-15z"/></svg>
           </button>
           {/* Left */}
           <button 
-            onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current.x = -1; currentMoveVec.current.y = 0; }} 
+            onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current = { x: -1, y: 0 }; }} 
+            onTouchEnd={stopMovement}
             className="dpad-btn btn-left"
           >
-            <svg className="w-3.5 h-3.5 text-cyan-400/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="5" d="M15 19l-7-7 7-7" /></svg>
+            <svg className="arrow-svg rotate-left" viewBox="0 0 24 24"><path d="M12 4l-9 15h18l-9-15z"/></svg>
           </button>
           {/* Right */}
           <button 
-            onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current.x = 1; currentMoveVec.current.y = 0; }} 
+            onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current = { x: 1, y: 0 }; }} 
+            onTouchEnd={stopMovement}
             className="dpad-btn btn-right"
           >
-            <svg className="w-3.5 h-3.5 text-cyan-400/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="5" d="M9 5l7 7-7 7" /></svg>
+            <svg className="arrow-svg rotate-right" viewBox="0 0 24 24"><path d="M12 4l-9 15h18l-9-15z"/></svg>
           </button>
-          {/* Center Indicator */}
           <div className="dpad-center">
-             <div className="w-1 h-1 rounded-full bg-cyan-400/10" />
+            <div className="center-dot" />
           </div>
         </div>
 
