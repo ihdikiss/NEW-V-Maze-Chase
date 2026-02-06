@@ -470,31 +470,25 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
           const isWallLeft = c > 0 && maze[r][c-1] === 1;
           const isWallRight = c < cols - 1 && maze[r][c+1] === 1;
 
-          // 1. Draw Shadow (Drop Shadow Effect)
           ctx.fillStyle = 'rgba(0,0,0,0.4)';
           ctx.fillRect(x + 10, y + 10, TILE_SIZE, TILE_SIZE);
 
-          // 2. Draw 3D Side Walls (The Body)
           ctx.fillStyle = MAZE_STYLE.wallBody;
           ctx.fillRect(x, y + 8, TILE_SIZE, TILE_SIZE - 8);
           
-          // Connect Bodies to remove segmentation
           if (isWallRight) ctx.fillRect(x + TILE_SIZE - 2, y + 8, 4, TILE_SIZE - 8);
           if (isWallBelow) ctx.fillRect(x, y + TILE_SIZE - 2, TILE_SIZE, 4);
 
-          // 3. Draw Top Surface (Nebula Gradient)
           const wallGrad = ctx.createLinearGradient(x, y, x, y + TILE_SIZE);
           wallGrad.addColorStop(0, MAZE_STYLE.wallTop);
           wallGrad.addColorStop(1, MAZE_STYLE.wallBody);
           ctx.fillStyle = wallGrad;
           ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
 
-          // Connect Tops to remove segmentation
           ctx.fillStyle = MAZE_STYLE.wallTop;
           if (isWallRight) ctx.fillRect(x + TILE_SIZE - 2, y, 4, TILE_SIZE);
           if (isWallBelow) ctx.fillRect(x, y + TILE_SIZE - 2, TILE_SIZE, 4);
 
-          // 4. Cosmic Details (Only on Top Surface)
           ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
           const starSeed = (r * 7 + c * 3) % 10;
           for(let i=0; i<2; i++) {
@@ -506,7 +500,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
           }
           ctx.globalAlpha = 1.0;
 
-          // 5. Exterior Energy Border (Only on edges not connected to other walls)
           ctx.strokeStyle = MAZE_STYLE.wallBorder;
           ctx.lineWidth = 1.5;
           ctx.beginPath();
@@ -548,38 +541,37 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   useEffect(() => {
     const kd = (e:KeyboardEvent) => {
       if (isTransitioning) return;
-      // التعديل هنا لضمان الحركة المستمرة في اتجاه واحد فقط في كل مرة
       if (['ArrowUp','w'].includes(e.key)) { currentMoveVec.current.y = -1; currentMoveVec.current.x = 0; }
       else if (['ArrowDown','s'].includes(e.key)) { currentMoveVec.current.y = 1; currentMoveVec.current.x = 0; }
       else if (['ArrowLeft','a'].includes(e.key)) { currentMoveVec.current.x = -1; currentMoveVec.current.y = 0; }
       else if (['ArrowRight','d'].includes(e.key)) { currentMoveVec.current.x = 1; currentMoveVec.current.y = 0; }
       if (e.code==='Space') fireProjectile();
     };
-    const ku = (e:KeyboardEvent) => {
-      // إزالة منطق تصفير الحركة لضمان استمرارها
-    };
-    window.addEventListener('keydown', kd); window.addEventListener('keyup', ku);
+    window.addEventListener('keydown', kd);
     rafRef.current = requestAnimationFrame(update);
-    return () => { window.removeEventListener('keydown', kd); window.removeEventListener('keyup', ku); cancelAnimationFrame(rafRef.current); };
+    return () => { window.removeEventListener('keydown', kd); cancelAnimationFrame(rafRef.current); };
   }, [update]);
 
   return (
     <div ref={containerRef} className="absolute inset-0 w-full h-full flex items-center justify-center bg-[#050510]">
       <canvas ref={canvasRef} width={dimensions.width} height={dimensions.height} className="block" />
       
-      {/* 🚀 FORCE VISIBILITY STYLES FOR MOBILE DEVICES */}
+      {/* 🚀 STYLES FOR INTEGRATED MOBILE CONTROLS */}
       <style>{`
         .mobile-ui-container {
           position: fixed !important;
-          inset: 0 !important;
-          width: 100% !important;
-          height: 100% !important;
+          bottom: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
           z-index: 99999 !important;
           pointer-events: none !important;
           display: none !important;
           touch-action: none !important;
           -webkit-user-select: none !important;
           user-select: none !important;
+          padding: 1rem 1rem 2.5rem 1rem !important; /* Low position */
+          justify-content: space-between !important;
+          align-items: flex-end !important;
         }
 
         @media (max-width: 1024px) {
@@ -588,88 +580,128 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
           }
         }
 
-        .joystick-btn {
+        /* 🎮 TRANSPARENT INTEGRATED D-PAD PANEL */
+        .dpad-panel {
           pointer-events: auto !important;
-          background: rgba(255, 255, 255, 0.05) !important;
-          backdrop-filter: blur(4px) !important;
-          -webkit-tap-highlight-color: transparent !important;
-          touch-action: none !important;
-          border: 1px solid rgba(0, 242, 255, 0.1) !important;
-        }
-        
-        .joystick-btn:active {
-          background: rgba(0, 242, 255, 0.2) !important;
-          border-color: rgba(0, 242, 255, 0.4) !important;
-          transform: scale(0.95);
+          background: transparent !important; /* Fully transparent panel back */
+          border: none !important;
+          display: grid !important;
+          grid-template-areas: 
+            ". up ."
+            "left center right"
+            ". down .";
+          grid-template-columns: repeat(3, 2.3rem) !important; /* Smaller size buttons */
+          grid-template-rows: repeat(3, 2.3rem) !important; /* Smaller size buttons */
+          gap: 1px !important; /* Integrated/Connected look */
+          padding: 0px !important;
+          box-shadow: none !important;
         }
 
-        .shoot-btn {
-          pointer-events: auto !important;
-          background: rgba(239, 68, 68, 0.1) !important;
-          backdrop-filter: blur(6px) !important;
-          border: 1px solid rgba(239, 68, 68, 0.3) !important;
+        .dpad-btn {
+          background: rgba(0, 210, 255, 0.05) !important; /* Very faint tint */
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          transition: all 0.2s !important;
           -webkit-tap-highlight-color: transparent !important;
           touch-action: none !important;
-          box-shadow: 0 0 15px rgba(239, 68, 68, 0.1) !important;
+          border: 1px solid rgba(0, 210, 255, 0.15) !important; /* Subtle boundary */
         }
 
-        .shoot-btn:active {
-          background: rgba(239, 68, 68, 0.3) !important;
+        .dpad-btn:active {
+          background: rgba(0, 210, 255, 0.4) !important;
+          box-shadow: inset 0 0 12px rgba(0, 210, 255, 0.5) !important;
           transform: scale(0.9);
+        }
+
+        .btn-up { grid-area: up; border-radius: 0.5rem 0.5rem 0.1rem 0.1rem !important; }
+        .btn-down { grid-area: down; border-radius: 0.1rem 0.1rem 0.5rem 0.5rem !important; }
+        .btn-left { grid-area: left; border-radius: 0.5rem 0.1rem 0.1rem 0.5rem !important; }
+        .btn-right { grid-area: right; border-radius: 0.1rem 0.5rem 0.5rem 0.1rem !important; }
+        
+        .dpad-center { 
+          grid-area: center; 
+          display: flex; 
+          align-items: center; 
+          justify-content: center;
+          background: rgba(0, 210, 255, 0.02) !important;
+          border: 1px solid rgba(0, 210, 255, 0.1);
+        }
+
+        .shoot-btn-wrapper {
+          pointer-events: auto !important;
+          background: transparent !important;
+        }
+
+        .shoot-btn-circle {
+          width: 3.5rem; /* Smaller shoot button to match */
+          height: 3.5rem;
+          background: rgba(239, 68, 68, 0.05) !important;
+          border: 2px solid rgba(239, 68, 68, 0.2) !important;
+          border-radius: 50% !important;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.1s;
+          backdrop-filter: blur(2px);
+        }
+
+        .shoot-btn-circle:active {
+          background: rgba(239, 68, 68, 0.3) !important;
+          transform: scale(0.85);
         }
       `}</style>
       
-      <div className="mobile-ui-container flex items-end justify-between p-6 pb-12">
+      <div className="mobile-ui-container">
         
-        {/* Left Side: Small Shoot Button */}
-        <div className="flex items-center justify-center ml-4 mb-8">
+        {/* Left Side: Shoot Button */}
+        <div className="shoot-btn-wrapper">
           <button 
             onTouchStart={(e) => { e.preventDefault(); fireProjectile(); }}
-            className="shoot-btn w-20 h-20 rounded-full flex items-center justify-center"
+            className="shoot-btn-circle"
           >
-            <div className="relative w-10 h-10 flex items-center justify-center pointer-events-none opacity-40">
-                <div className="absolute w-full h-px bg-red-500" />
-                <div className="absolute h-full w-px bg-red-500" />
-                <div className="w-6 h-6 border border-red-500/30 rounded-full" />
-                <div className="w-2 h-2 bg-red-500 rounded-full shadow-[0_0_10px_#ef4444]" />
+            <div className="relative w-5 h-5 flex items-center justify-center pointer-events-none">
+                <div className="absolute w-full h-px bg-red-500/40" />
+                <div className="absolute h-full w-px bg-red-500/40" />
+                <div className="w-1.5 h-1.5 bg-red-500/80 rounded-full" />
             </div>
           </button>
         </div>
 
-        {/* Right Side: Directional Arrows (Continuous Movement Implementation) */}
-        <div className="flex items-center justify-center mr-2 mb-4">
-           <div className="relative w-36 h-36 bg-white/5 rounded-full border border-cyan-500/10 flex items-center justify-center">
-              {/* Up */}
-              <button 
-                onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current.y = -1; currentMoveVec.current.x = 0; }} 
-                className="joystick-btn absolute top-1 w-12 h-12 rounded-full flex items-center justify-center"
-              >
-                <svg className="w-6 h-6 text-cyan-400/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 15l7-7 7 7" /></svg>
-              </button>
-              {/* Down */}
-              <button 
-                onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current.y = 1; currentMoveVec.current.x = 0; }} 
-                className="joystick-btn absolute bottom-1 w-12 h-12 rounded-full flex items-center justify-center"
-              >
-                <svg className="w-6 h-6 text-cyan-400/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" /></svg>
-              </button>
-              {/* Left */}
-              <button 
-                onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current.x = -1; currentMoveVec.current.y = 0; }} 
-                className="joystick-btn absolute left-1 w-12 h-12 rounded-full flex items-center justify-center"
-              >
-                <svg className="w-6 h-6 text-cyan-400/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" /></svg>
-              </button>
-              {/* Right */}
-              <button 
-                onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current.x = 1; currentMoveVec.current.y = 0; }} 
-                className="joystick-btn absolute right-1 w-12 h-12 rounded-full flex items-center justify-center"
-              >
-                <svg className="w-6 h-6 text-cyan-400/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" /></svg>
-              </button>
-              {/* Center */}
-              <div className="w-4 h-4 rounded-full bg-cyan-400/10 border border-cyan-500/20 animate-pulse" />
-           </div>
+        {/* Right Side: Integrated D-PAD Panel (Small & Transparent) */}
+        <div className="dpad-panel">
+          {/* Up */}
+          <button 
+            onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current.y = -1; currentMoveVec.current.x = 0; }} 
+            className="dpad-btn btn-up"
+          >
+            <svg className="w-3.5 h-3.5 text-cyan-400/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="5" d="M5 15l7-7 7 7" /></svg>
+          </button>
+          {/* Down */}
+          <button 
+            onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current.y = 1; currentMoveVec.current.x = 0; }} 
+            className="dpad-btn btn-down"
+          >
+            <svg className="w-3.5 h-3.5 text-cyan-400/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="5" d="M19 9l-7 7-7-7" /></svg>
+          </button>
+          {/* Left */}
+          <button 
+            onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current.x = -1; currentMoveVec.current.y = 0; }} 
+            className="dpad-btn btn-left"
+          >
+            <svg className="w-3.5 h-3.5 text-cyan-400/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="5" d="M15 19l-7-7 7-7" /></svg>
+          </button>
+          {/* Right */}
+          <button 
+            onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current.x = 1; currentMoveVec.current.y = 0; }} 
+            className="dpad-btn btn-right"
+          >
+            <svg className="w-3.5 h-3.5 text-cyan-400/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="5" d="M9 5l7 7-7 7" /></svg>
+          </button>
+          {/* Center Indicator */}
+          <div className="dpad-center">
+             <div className="w-1 h-1 rounded-full bg-cyan-400/10" />
+          </div>
         </div>
 
       </div>
