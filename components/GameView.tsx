@@ -33,7 +33,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     engineGlowScale: 1
   });
   
-  // الحركة أصبحت مستمرة، لذا لا نقوم بتصفير هذا المتجه عند رفع الإصبع
   const currentMoveVec = useRef({ x: 0, y: 0 });
   const cameraRef = useRef({ x: 0, y: 0 });
   const enemiesRef = useRef<any[]>([]);
@@ -108,7 +107,7 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     };
     isEnemyFrozenRef.current = false;
     canCheckAnswerRef.current = true;
-    currentMoveVec.current = { x: 0, y: 0 }; // تبدأ متوقفة حتى يختار المستخدم اتجاه
+    currentMoveVec.current = { x: 0, y: 0 };
     cameraRef.current = { x: sx + 22, y: sy + 22 };
     enemiesRef.current = (levelData.enemies || []).map((e: any, i: number) => ({
       ...e, x: e.x * TILE_SIZE + 32, y: e.y * TILE_SIZE + 32, id: `enemy-${i}`, isDestroyed: false, 
@@ -174,7 +173,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
         if (canMoveX) p.x += vx * dt;
         if (canMoveY) p.y += vy * dt;
 
-        // إذا اصطدم بحائط في كلا الاتجاهين، نقوم بإيقاف الحركة المستمرة لتجنب "التعليق" بصرياً
         if (!canMoveX && !canMoveY) {
            currentMoveVec.current = { x: 0, y: 0 };
         }
@@ -552,7 +550,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
       if (e.code==='Space') fireProjectile();
     };
     
-    // لا نحتاج لـ ku لتصفير الحركة لأنها أصبحت مستمرة
     window.addEventListener('keydown', kd);
     rafRef.current = requestAnimationFrame(update);
     return () => { 
@@ -568,7 +565,8 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
       <style>{`
         .mobile-ui-container {
           position: fixed !important;
-          bottom: 5% !important;
+          bottom: 10px !important; /* LOWERED TO THE MAX */
+          bottom: env(safe-area-inset-bottom, 10px) !important; /* Safe Area support */
           left: 0 !important;
           right: 0 !important;
           z-index: 99999 !important;
@@ -577,7 +575,7 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
           touch-action: none !important;
           -webkit-user-select: none !important;
           user-select: none !important;
-          padding: 0 1.5rem !important;
+          padding: 0 1rem !important;
           justify-content: space-between !important;
           align-items: flex-end !important;
         }
@@ -597,7 +595,7 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
             ". down .";
           grid-template-columns: repeat(3, 3.2rem) !important;
           grid-template-rows: repeat(3, 3.2rem) !important;
-          gap: 6px !important;
+          gap: 4px !important;
           opacity: 0.4 !important;
           transition: opacity 0.2s, transform 0.1s;
           touch-action: none !important;
@@ -636,13 +634,8 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
           height: 1.8rem; 
           fill: #00f2ff; 
           filter: drop-shadow(0 0 8px #00f2ff);
-          transition: filter 0.2s;
         }
         
-        .dpad-btn:active .arrow-svg {
-          filter: drop-shadow(0 0 15px #00f2ff) brightness(1.2);
-        }
-
         .rotate-up { transform: rotate(0deg); }
         .rotate-down { transform: rotate(180deg); }
         .rotate-left { transform: rotate(-90deg); }
@@ -660,7 +653,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
           height: 0.5rem;
           background: rgba(0, 210, 255, 0.3);
           border-radius: 50%;
-          box-shadow: 0 0 8px rgba(0, 210, 255, 0.5);
         }
 
         .shoot-btn-wrapper {
@@ -668,12 +660,13 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
           opacity: 0.4 !important;
           transition: opacity 0.2s, transform 0.1s;
           touch-action: none !important;
+          padding-bottom: 5px; /* Alignment fix for the circular button */
         }
         .shoot-btn-wrapper:active { opacity: 0.9 !important; }
 
         .shoot-btn-circle {
-          width: 5rem;
-          height: 5rem;
+          width: 4.8rem;
+          height: 4.8rem;
           background: rgba(255, 159, 67, 0.05) !important; 
           border: 3.5px solid #ff9f43 !important; 
           border-radius: 50% !important;
@@ -689,13 +682,12 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
           transform: scale(0.85);
           background: rgba(255, 159, 67, 0.3) !important;
           box-shadow: 0 0 35px rgba(255, 159, 67, 0.7);
-          border-color: #ffb167 !important;
         }
 
         .bomb-text {
           font-family: 'Orbitron', sans-serif;
           font-weight: 900;
-          font-size: 0.85rem;
+          font-size: 0.8rem;
           color: #ff9f43;
           letter-spacing: 1.5px;
           text-shadow: 0 0 10px #ff9f43;
@@ -704,7 +696,7 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
       
       <div className="mobile-ui-container">
         
-        {/* زر القنبلة (يسار) */}
+        {/* BOMB (LEFT) */}
         <div className="shoot-btn-wrapper">
           <button 
             onTouchStart={(e) => { e.preventDefault(); fireProjectile(); }}
@@ -714,9 +706,8 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
           </button>
         </div>
 
-        {/* لوحة الاتجاهات (يمين) - أزرار اليمين واليسار معكوسة داخلياً */}
+        {/* DPAD (RIGHT) - INVERTED INTERNAL BUTTONS */}
         <div className="dpad-panel">
-          {/* سهم فوق */}
           <button 
             onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current = { x: 0, y: -1 }; }} 
             className="dpad-btn btn-up"
@@ -724,7 +715,6 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
             <svg className="arrow-svg rotate-up" viewBox="0 0 24 24"><path d="M12 4l-9 15h18l-9-15z"/></svg>
           </button>
           
-          {/* سهم تحت */}
           <button 
             onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current = { x: 0, y: 1 }; }} 
             className="dpad-btn btn-down"
@@ -732,7 +722,7 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
             <svg className="arrow-svg rotate-down" viewBox="0 0 24 24"><path d="M12 4l-9 15h18l-9-15z"/></svg>
           </button>
           
-          {/* الزر المتواجد في جهة اليمين (يتحرك لليسار x: -1) */}
+          {/* Visual Right Button -> Logical Move Left */}
           <button 
             onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current = { x: -1, y: 0 }; }} 
             className="dpad-btn btn-left"
@@ -740,7 +730,7 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
             <svg className="arrow-svg rotate-left" viewBox="0 0 24 24"><path d="M12 4l-9 15h18l-9-15z"/></svg>
           </button>
           
-          {/* الزر المتواجد في جهة اليسار (يتحرك لليمين x: 1) */}
+          {/* Visual Left Button -> Logical Move Right */}
           <button 
             onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current = { x: 1, y: 0 }; }} 
             className="dpad-btn btn-right"
