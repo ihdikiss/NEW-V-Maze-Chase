@@ -2,6 +2,7 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { TILE_SIZE, PLAYER_SPEED, ENEMY_SPEED_BASE, MAZE_STYLE, PROJECTILE_SPEED } from '../constants';
 import { CameraMode, Position } from '../types';
+import VirtualJoystick from './VirtualJoystick';
 
 interface GameViewProps {
   levelData: any;
@@ -17,6 +18,14 @@ interface Projectile {
   x: number; y: number; vx: number; vy: number; id: string;
 }
 
+interface PowerUp {
+  x: number;
+  y: number;
+  type: 'shield' | 'weapon';
+  picked: boolean;
+  rotation: number;
+}
+
 const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, onEnemyHit, onAmmoChange, cameraMode = CameraMode.CHASE, isTransitioning = false }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -24,19 +33,17 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   const playerRef = useRef({ 
     x: 0, y: 0, width: 44, height: 44, dir: 'up', 
     isShielded: false, shieldTime: 0, ammo: 0, isDead: false,
-    respawnGrace: 0, currentAngle: 0, moveIntensity: 0, vx: 0, vy: 0,
-    tiltAngle: 0, 
-    pitchFactor: 0, 
-    bankFactor: 0,  
-    visualScaleX: 1, 
-    visualScaleY: 1,
-    engineGlowScale: 1
+    respawnGrace: 0, currentAngle: 0, targetAngle: 0, 
+    bankAngle: 0, 
+    moveIntensity: 0, vx: 0, vy: 0,
+    engineScale: 1, pulseTimer: 0
   });
   
   const currentMoveVec = useRef({ x: 0, y: 0 });
+  const nextMoveVec = useRef({ x: 0, y: 0 }); 
   const cameraRef = useRef({ x: 0, y: 0 });
   const enemiesRef = useRef<any[]>([]);
-  const powerUpsRef = useRef<any[]>([]);
+  const powerUpsRef = useRef<PowerUp[]>([]);
   const projectilesRef = useRef<Projectile[]>([]);
   const rafRef = useRef<number>(0);
   const lastUpdateRef = useRef<number>(performance.now());
@@ -74,25 +81,32 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     return maze[ty][tx] === 1;
   };
 
-  const findPath = (start: Position, end: Position): Position[] | null => {
+  const checkCol = (nx:number, ny:number) => {
+    const pad = 14; 
+    const pts = [{x:nx+pad,y:ny+pad},{x:nx+44-pad,y:ny+pad},{x:nx+pad,y:ny+44-pad},{x:nx+44-pad,y:ny+44-pad}];
+    return pts.some(pt => isWall(pt.x, pt.y));
+  };
+
+  const findNextStep = (startTile: {x: number, y: number}, targetTile: {x: number, y: number}) => {
     const maze = levelData.maze;
-    if (!maze) return null;
-    const queue: { pos: Position; path: Position[] }[] = [{ pos: start, path: [] }];
+    if (!maze) return startTile;
+    const queue: {x: number, y: number, path: {x: number, y: number}[]}[] = [{ x: startTile.x, y: startTile.y, path: [] }];
     const visited = new Set<string>();
-    visited.add(`${start.x},${start.y}`);
-    const directions = [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}];
-    while (queue.length > 0) {
-      const { pos, path } = queue.shift()!;
-      if (pos.x === end.x && pos.y === end.y) return path;
-      for (const d of directions) {
-        const next = { x: pos.x + d.x, y: pos.y + d.y };
-        if (next.y>=0 && next.y<maze.length && next.x>=0 && next.x<maze[0].length && maze[next.y][next.x]!==1 && !visited.has(`${next.x},${next.y}`)) {
-          visited.add(`${next.x},${next.y}`);
-          queue.push({ pos: next, path: [...path, next] });
+    visited.add(`${startTile.x},${startTile.y}`);
+    const dirs = [{x:0, y:-1}, {x:0, y:1}, {x:-1, y:0}, {x:1, y:0}];
+    let iterations = 0;
+    while (queue.length > 0 && iterations < 200) {
+      iterations++;
+      const { x, y, path } = queue.shift()!;
+      if (x === targetTile.x && y === targetTile.y) return path[0] || startTile;
+      for (const d of dirs) {
+        const nx = x + d.x; const ny = y + d.y; const key = `${nx},${ny}`;
+        if (ny >= 0 && ny < maze.length && nx >= 0 && nx < maze[0].length && maze[ny][nx] !== 1 && !visited.has(key)) {
+          visited.add(key); queue.push({ x: nx, y: ny, path: [...path, {x: nx, y: ny}] });
         }
       }
     }
-    return null;
+    return startTile;
   };
 
   const initLevel = useCallback(() => {
@@ -101,24 +115,25 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     const sy = levelData.startPos.y * TILE_SIZE + 10;
     playerRef.current = { 
       ...playerRef.current, x: sx, y: sy, vx:0, vy:0, isDead: false, respawnGrace: 3.0, 
-      currentAngle: 0, moveIntensity: 0, ammo: 0, isShielded: false, shieldTime: 0,
-      tiltAngle: 0, visualScaleX: 1, visualScaleY: 1, engineGlowScale: 1,
-      bankFactor: 0, pitchFactor: 0
+      currentAngle: 0, targetAngle: 0, bankAngle: 0, moveIntensity: 0, ammo: 0, isShielded: false, shieldTime: 0,
+      engineScale: 1, pulseTimer: 0
     };
     isEnemyFrozenRef.current = false;
     canCheckAnswerRef.current = true;
     currentMoveVec.current = { x: 0, y: 0 };
+    nextMoveVec.current = { x: 0, y: 0 };
     cameraRef.current = { x: sx + 22, y: sy + 22 };
     enemiesRef.current = (levelData.enemies || []).map((e: any, i: number) => ({
       ...e, x: e.x * TILE_SIZE + 32, y: e.y * TILE_SIZE + 32, id: `enemy-${i}`, isDestroyed: false, 
-      thinkTimer: Math.random() * 0.5, currentPath: [], rotation: Math.random() * Math.PI * 2
+      rotation: Math.random() * Math.PI * 2, angle: 0, targetTile: {x: e.x, y: e.y}, pathUpdateTimer: Math.random() * 0.5
     }));
 
     powerUpsRef.current = [
-      { x: 3 * TILE_SIZE + 32, y: 3 * TILE_SIZE + 32, type: 'shield', picked: false },
-      { x: 11 * TILE_SIZE + 32, y: 7 * TILE_SIZE + 32, type: 'weapon', picked: false }
+      { x: 1 * TILE_SIZE + 32, y: 9 * TILE_SIZE + 32, type: 'shield', picked: false, rotation: 0 },
+      { x: 13 * TILE_SIZE + 32, y: 9 * TILE_SIZE + 32, type: 'weapon', picked: false, rotation: 0 },
+      { x: 7 * TILE_SIZE + 32, y: 1 * TILE_SIZE + 32, type: 'weapon', picked: false, rotation: 0 }
     ];
-    
+
     projectilesRef.current = [];
     onAmmoChange?.(0);
   }, [levelData, onAmmoChange]);
@@ -130,122 +145,127 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     updateSize(); window.addEventListener('resize', updateSize); return () => window.removeEventListener('resize', updateSize);
   }, []);
 
-  const handleDeath = () => {
-    if (playerRef.current.isDead || playerRef.current.respawnGrace > 0 || isEnemyFrozenRef.current || playerRef.current.isShielded) return;
-    playerRef.current.isDead = true; setScreenShake(10);
-    onEnemyHit();
-    setTimeout(() => { initLevel(); setScreenShake(0); }, 1200);
+  const fireProjectile = () => {
+    const p = playerRef.current;
+    if (p.ammo <= 0 || p.isDead) return;
+    let vx=0, vy=0; const d = p.dir;
+    if (d==='up') vy=-PROJECTILE_SPEED; else if (d==='down') vy=PROJECTILE_SPEED; else if (d==='left') vx=-PROJECTILE_SPEED; else vx=PROJECTILE_SPEED;
+    projectilesRef.current.push({ x: p.x+22, y: p.y+22, vx, vy, id: `p-${Date.now()}` });
+    p.ammo--; onAmmoChange?.(p.ammo);
   };
 
-  const fireProjectile = () => {
-    if (playerRef.current.ammo <= 0 || playerRef.current.isDead) return;
-    let vx=0, vy=0; const d = playerRef.current.dir;
-    if (d==='up') vy=-PROJECTILE_SPEED; else if (d==='down') vy=PROJECTILE_SPEED; else if (d==='left') vx=-PROJECTILE_SPEED; else vx=PROJECTILE_SPEED;
-    projectilesRef.current.push({ x: playerRef.current.x+22, y: playerRef.current.y+22, vx, vy, id: `p-${Date.now()}` });
-    playerRef.current.ammo--; onAmmoChange?.(playerRef.current.ammo);
+  const handleJoystickMove = (v: { x: number; y: number }) => {
+    // Threshold for activation
+    const threshold = 0.3;
+    if (Math.abs(v.x) > Math.abs(v.y)) {
+      if (Math.abs(v.x) > threshold) {
+        nextMoveVec.current = { x: v.x > 0 ? 1 : -1, y: 0 };
+      }
+    } else {
+      if (Math.abs(v.y) > threshold) {
+        nextMoveVec.current = { x: 0, y: v.y > 0 ? 1 : -1 };
+      }
+    }
+    
+    // Smooth visual rotation/banking based on X axis
+    playerRef.current.bankAngle = lerp(playerRef.current.bankAngle, v.x * 0.25, 0.1);
   };
 
   const update = useCallback(() => {
     const now = performance.now();
     let dt = Math.min((now - lastUpdateRef.current) / 1000, 0.1);
     lastUpdateRef.current = now;
-
     if (!levelData?.maze) return;
     if (isTransitioning) { draw(); rafRef.current = requestAnimationFrame(update); return; }
     if (screenShake > 0) setScreenShake(s => Math.max(0, s - 20 * dt));
 
     const p = playerRef.current;
     if (!p.isDead) {
-      const iv = currentMoveVec.current;
-      p.moveIntensity = lerp(p.moveIntensity, (iv.x !== 0 || iv.y !== 0) ? 1 : 0, 10 * dt);
-      
-      let targetBank = 0;
-      let targetPitch = 0;
-      let targetEngineScale = 1;
+      p.pulseTimer += dt;
+      const tileX = Math.floor((p.x + 22) / TILE_SIZE);
+      const tileY = Math.floor((p.y + 22) / TILE_SIZE);
+      const centerX = tileX * TILE_SIZE + 10;
+      const centerY = tileY * TILE_SIZE + 10;
 
-      if (iv.x !== 0 || iv.y !== 0) {
-        const mag = Math.hypot(iv.x, iv.y);
-        const vx = (iv.x / mag) * PLAYER_SPEED; const vy = (iv.y / mag) * PLAYER_SPEED;
+      if (nextMoveVec.current.x !== 0 || nextMoveVec.current.y !== 0) {
+        const isPerpendicular = (currentMoveVec.current.x !== 0 && nextMoveVec.current.y !== 0) || (currentMoveVec.current.y !== 0 && nextMoveVec.current.x !== 0);
+        const distToCenter = Math.hypot(p.x - centerX, p.y - centerY);
+        const canTurn = !checkCol(p.x + nextMoveVec.current.x * 20, p.y + nextMoveVec.current.y * 20);
         
-        let canMoveX = !checkCol(p.x + vx * dt, p.y);
-        let canMoveY = !checkCol(p.x, p.y + vy * dt);
-
-        if (canMoveX) p.x += vx * dt;
-        if (canMoveY) p.y += vy * dt;
-
-        if (!canMoveX && !canMoveY) {
-           currentMoveVec.current = { x: 0, y: 0 };
-        }
-        
-        p.currentAngle = lerpAngle(p.currentAngle, Math.atan2(vy, vx) + Math.PI/2, 15 * dt);
-        p.dir = Math.abs(vx) > Math.abs(vy) ? (vx > 0 ? 'right' : 'left') : (vy > 0 ? 'down' : 'up');
-
-        if (iv.x !== 0) targetBank = iv.x;
-        if (iv.y < 0) { 
-            targetPitch = 1;
-            targetEngineScale = 1.8;
-        } else if (iv.y > 0) {
-            targetPitch = -0.5;
-            targetEngineScale = 0.5;
-        }
-      }
-
-      p.bankFactor = lerp(p.bankFactor, targetBank, 8 * dt);
-      p.pitchFactor = lerp(p.pitchFactor, targetPitch, 8 * dt);
-      p.engineGlowScale = lerp(p.engineGlowScale, targetEngineScale, 8 * dt);
-
-      for (const pw of powerUpsRef.current) {
-        if (!pw.picked && Math.hypot(p.x + 22 - pw.x, p.y + 22 - pw.y) < 35) {
-          pw.picked = true;
-          if (pw.type === 'shield') {
-            p.isShielded = true;
-            p.shieldTime = 12;
-          } else if (pw.type === 'weapon') {
-            p.ammo += 5;
-            onAmmoChange?.(p.ammo);
+        if (canTurn) {
+          if (isPerpendicular && distToCenter < 32) {
+            p.x = centerX; p.y = centerY;
+            currentMoveVec.current = { ...nextMoveVec.current };
+            nextMoveVec.current = { x: 0, y: 0 };
+          } else if (!isPerpendicular) {
+            currentMoveVec.current = { ...nextMoveVec.current };
+            nextMoveVec.current = { x: 0, y: 0 };
           }
         }
       }
 
-      if (p.isShielded) {
-        p.shieldTime -= dt;
-        if (p.shieldTime <= 0) p.isShielded = false;
+      const iv = currentMoveVec.current;
+      if (iv.x !== 0 || iv.y !== 0) {
+        const vx = iv.x * PLAYER_SPEED; const vy = iv.y * PLAYER_SPEED;
+        if (iv.x !== 0) p.y = lerp(p.y, centerY, 15 * dt);
+        if (iv.y !== 0) p.x = lerp(p.x, centerX, 15 * dt);
+        if (!checkCol(p.x + vx * dt, p.y + vy * dt)) { p.x += vx * dt; p.y += vy * dt; } else { 
+          p.x = Math.round(p.x / 4) * 4; p.y = Math.round(p.y / 4) * 4;
+          currentMoveVec.current = { x: 0, y: 0 }; 
+        }
+        p.targetAngle = Math.atan2(vy, vx) + Math.PI/2;
+        p.currentAngle = lerpAngle(p.currentAngle, p.targetAngle, 14 * dt);
+        p.dir = Math.abs(vx) > Math.abs(vy) ? (vx > 0 ? 'right' : 'left') : (vy > 0 ? 'down' : 'up');
+        p.moveIntensity = lerp(p.moveIntensity, 1, 6 * dt);
+        // Bank angle handled by joystick move or set here if using keys
+        if (iv.x !== 0 && Math.abs(p.bankAngle) < 0.01) p.bankAngle = lerp(p.bankAngle, iv.x * 0.08, 8 * dt);
+      } else { 
+        p.moveIntensity = lerp(p.moveIntensity, 0, 12 * dt);
+        p.bankAngle = lerp(p.bankAngle, 0, 12 * dt);
       }
 
+      if (p.isShielded) { p.shieldTime -= dt; if (p.shieldTime <= 0) p.isShielded = false; }
       if (p.respawnGrace > 0) p.respawnGrace -= dt;
-      cameraRef.current.x = lerp(cameraRef.current.x, p.x + 22, 10 * dt);
-      cameraRef.current.y = lerp(cameraRef.current.y, p.y + 22, 10 * dt);
+
+      for (const pw of powerUpsRef.current) {
+        if (!pw.picked && Math.hypot(p.x + 22 - pw.x, p.y + 22 - pw.y) < 30) {
+          pw.picked = true;
+          if (pw.type === 'shield') { p.isShielded = true; p.shieldTime = 5.0; } 
+          else if (pw.type === 'weapon') { p.ammo += 5; onAmmoChange?.(p.ammo); }
+        }
+        pw.rotation += 2 * dt;
+      }
+
+      cameraRef.current.x = lerp(cameraRef.current.x, p.x + 22, 12 * dt);
+      cameraRef.current.y = lerp(cameraRef.current.y, p.y + 22, 12 * dt);
     }
 
     projectilesRef.current = projectilesRef.current.filter(pj => {
       pj.x += pj.vx * dt; pj.y += pj.vy * dt;
       if (isWall(pj.x, pj.y)) return false;
-      for (const e of enemiesRef.current) if (!e.isDestroyed && Math.hypot(pj.x-e.x, pj.y-e.y)<30) { e.isDestroyed = true; return false; }
+      for (const e of enemiesRef.current) if (!e.isDestroyed && Math.hypot(pj.x-e.x, pj.y-e.y)<35) { e.isDestroyed = true; return false; }
       return true;
     });
 
-    const movementAllowed = !isTransitioning && !isEnemyFrozenRef.current;
     const pTX = Math.floor((p.x+22)/TILE_SIZE); const pTY = Math.floor((p.y+22)/TILE_SIZE);
-
     for (const e of enemiesRef.current) {
       if (e.isDestroyed) continue;
-      if (!movementAllowed) { e.vx = 0; e.vy = 0; continue; }
-      if (Math.hypot(p.x+22-e.x, p.y+22-e.y)<30 && !p.isShielded && p.respawnGrace<=0) handleDeath();
-      
-      e.rotation += 2 * dt; 
-      e.thinkTimer -= dt;
-      if (e.thinkTimer <= 0) {
-        const path = findPath({x: Math.floor(e.x/TILE_SIZE), y: Math.floor(e.y/TILE_SIZE)}, {x: pTX, y: pTY});
-        if (path) e.currentPath = path; e.thinkTimer = 0.5;
+      if (Math.hypot(p.x+22-e.x, p.y+22-e.y)<35 && !p.isShielded && p.respawnGrace<=0) {
+          p.isDead = true; setScreenShake(10); onEnemyHit(); setTimeout(() => { initLevel(); setScreenShake(0); }, 1200);
       }
-      if (e.currentPath.length > 0) {
-        const next = e.currentPath[0];
-        const tx = next.x * TILE_SIZE + 32, ty = next.y * TILE_SIZE + 32;
-        const dist = Math.hypot(tx-e.x, ty-e.y);
-        if (dist > 5) {
-          e.x += ((tx-e.x)/dist) * ENEMY_SPEED_BASE * dt;
-          e.y += ((ty-e.y)/dist) * ENEMY_SPEED_BASE * dt;
-        } else e.currentPath.shift();
+      if (!isEnemyFrozenRef.current) {
+        e.pathUpdateTimer -= dt;
+        if (e.pathUpdateTimer <= 0) {
+          e.targetTile = findNextStep({x: Math.floor(e.x/TILE_SIZE), y: Math.floor(e.y/TILE_SIZE)}, {x: pTX, y: pTY});
+          e.pathUpdateTimer = 0.25;
+        }
+        const dx = (e.targetTile.x * TILE_SIZE + 32) - e.x, dy = (e.targetTile.y * TILE_SIZE + 32) - e.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 2) {
+          const ms = ENEMY_SPEED_BASE * (Math.hypot(p.x+22-e.x, p.y+22-e.y) < 120 ? 1.1 : 1.0);
+          e.x += (dx/dist)*ms*dt; e.y += (dy/dist)*ms*dt;
+          e.angle = lerpAngle(e.angle, Math.atan2(dy, dx), 8 * dt);
+        }
       }
     }
 
@@ -253,193 +273,119 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
       const opt = levelData.options.find((opt:any) => opt.pos.x === pTX && opt.pos.y === pTY);
       if (opt) {
         canCheckAnswerRef.current = false;
-        if (opt.isCorrect) { 
-          isEnemyFrozenRef.current = true;
-          onCorrect(); 
-        } else { 
-          onIncorrect(); 
-          setTimeout(() => canCheckAnswerRef.current = true, 2000);
-        }
+        if (opt.isCorrect) { isEnemyFrozenRef.current = true; onCorrect(); } 
+        else { onIncorrect(); setTimeout(() => canCheckAnswerRef.current = true, 2000); }
       }
     }
-
-    draw();
-    rafRef.current = requestAnimationFrame(update);
+    draw(); rafRef.current = requestAnimationFrame(update);
   }, [levelData, onCorrect, onIncorrect, isTransitioning, dimensions, onAmmoChange]);
-
-  const checkCol = (nx:number, ny:number) => {
-    const pad = 12; const pts = [{x:nx+pad,y:ny+pad},{x:nx+44-pad,y:ny+pad},{x:nx+pad,y:ny+44-pad},{x:nx+44-pad,y:ny+44-pad}];
-    return pts.some(pt => isWall(pt.x, pt.y));
-  };
-
-  const drawPowerUp = (ctx: CanvasRenderingContext2D, pw: any) => {
-    const time = Date.now();
-    const pulse = Math.sin(time / 200) * 0.2 + 1;
-    const rotate = time / 500;
-    
-    ctx.save();
-    ctx.translate(pw.x, pw.y);
-    
-    const color = pw.type === 'shield' ? '#00f2ff' : '#ff9f43';
-    
-    const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, 25 * pulse);
-    glow.addColorStop(0, color + '66');
-    glow.addColorStop(1, 'transparent');
-    ctx.fillStyle = glow;
-    ctx.beginPath(); ctx.arc(0, 0, 25 * pulse, 0, Math.PI * 2); ctx.fill();
-    
-    ctx.rotate(rotate);
-    ctx.fillStyle = color;
-    ctx.shadowBlur = 15; ctx.shadowColor = color;
-    
-    if (pw.type === 'shield') {
-      ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
-      ctx.strokeRect(-6, -6, 12, 12);
-    } else {
-      ctx.beginPath();
-      for(let i=0; i<4; i++) {
-        ctx.rotate(Math.PI/2);
-        ctx.moveTo(12, 0); ctx.lineTo(0, 4); ctx.lineTo(0, -4);
-      }
-      ctx.fill();
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(-3, -3, 6, 6);
-    }
-    
-    ctx.restore();
-  };
 
   const drawPlayer = (ctx: CanvasRenderingContext2D, p: any) => {
     ctx.save();
     ctx.translate(p.x + 22, p.y + 22);
     ctx.rotate(p.currentAngle);
-    
-    const time = Date.now();
-    const pulse = Math.sin(time / 200) * 0.5 + 0.5;
+    ctx.transform(1, 0, p.bankAngle, 1, 0, 0);
+
+    const moveFactor = p.moveIntensity;
+    const pulse = Math.sin(p.pulseTimer * 10) * 0.1 + 0.9;
     const isArmed = p.ammo > 0;
-    const themeColor = isArmed ? '#ff9f43' : '#00f2ff';
 
-    if (p.isShielded) {
-      const shieldPulse = Math.sin(time / 100) * 5;
-      const sg = ctx.createRadialGradient(0, 0, 30, 0, 0, 45 + shieldPulse);
-      sg.addColorStop(0, 'transparent');
-      sg.addColorStop(0.8, themeColor + '66');
-      sg.addColorStop(1, 'transparent');
-      ctx.fillStyle = sg;
-      ctx.beginPath(); ctx.arc(0, 0, 45 + shieldPulse, 0, Math.PI * 2); ctx.fill();
+    if (moveFactor > 0.1) {
+        ctx.save();
+        const thrusterY = 12;
+        const engineLen = (isArmed ? 25 : 20) * moveFactor * pulse;
+        const grad = ctx.createLinearGradient(0, thrusterY, 0, thrusterY + engineLen);
+        grad.addColorStop(0, isArmed ? 'rgba(255, 159, 67, 0.6)' : 'rgba(0, 242, 255, 0.4)');
+        grad.addColorStop(1, 'transparent');
+        ctx.fillStyle = grad;
+        ctx.fillRect(8, thrusterY, 12, engineLen);
+        ctx.fillRect(-20, thrusterY, 12, engineLen);
+        ctx.restore();
     }
 
-    const scannerGlow = ctx.createLinearGradient(0, -30, 0, -120);
-    scannerGlow.addColorStop(0, isArmed ? 'rgba(255, 159, 67, 0.6)' : 'rgba(0, 242, 255, 0.6)');
-    scannerGlow.addColorStop(1, 'transparent');
-    ctx.fillStyle = scannerGlow;
-    ctx.beginPath(); ctx.moveTo(-5, -28); ctx.lineTo(-25, -120); ctx.lineTo(0, -120); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(5, -28); ctx.lineTo(25, -120); ctx.lineTo(0, -120); ctx.fill();
+    const hullColor = isArmed ? '#2c3e50' : '#1e272e';
+    const darkEdge = '#050510';
+    ctx.shadowBlur = isArmed ? 15 : 10;
+    ctx.shadowColor = isArmed ? 'rgba(255, 159, 67, 0.3)' : 'rgba(0,0,0,0.5)';
 
-    if (p.moveIntensity > 0.05) {
-      const enginePulse = (Math.sin(time / 40) * 8) * p.engineGlowScale;
-      const washGlow = ctx.createRadialGradient(0, 20, 0, 0, 20, 40 * p.engineGlowScale);
-      washGlow.addColorStop(0, themeColor + '66');
-      washGlow.addColorStop(1, 'transparent');
-      ctx.fillStyle = washGlow;
-      ctx.beginPath(); ctx.arc(0, 20, 40, 0, Math.PI * 2); ctx.fill();
-
-      const drawEngine = (offsetX: number) => {
-        const thrustLen = (30 + enginePulse) * p.moveIntensity * p.engineGlowScale;
-        const g = ctx.createLinearGradient(0, 8, 0, 8 + thrustLen);
-        g.addColorStop(0, '#fff'); g.addColorStop(0.3, themeColor); g.addColorStop(1, 'transparent');
-        ctx.fillStyle = g;
-        const bankShift = p.bankFactor * 10;
-        const widthScale = 1 - Math.abs(p.bankFactor) * 0.3;
-        const engineX = (offsetX * widthScale) + (bankShift * 0.3);
-        ctx.beginPath(); ctx.moveTo(engineX - 4, 8); ctx.lineTo(engineX + 4, 8); ctx.lineTo(engineX, 8 + thrustLen); ctx.fill();
-      };
-      drawEngine(-10); drawEngine(10);
-    }
-
-    ctx.scale(p.visualScaleX, p.visualScaleY);
-    const bankShift = p.bankFactor * 10;
-    const widthScale = 1 - Math.abs(p.bankFactor) * 0.3;
-
-    const drawFacet = (color: string, points: [number, number][]) => {
-      ctx.fillStyle = color; ctx.beginPath();
-      points.forEach((pt, i) => {
-        const x = (pt[0] * widthScale) + (bankShift * (pt[1] < 0 ? 0.2 : 0.5));
-        const y = pt[1] - (p.pitchFactor * (pt[1] > 0 ? 10 : 0));
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-      });
-      ctx.closePath(); ctx.fill();
-    };
-
-    drawFacet('#111', [[0, -28], [24, 8], [12, 10], [0, 14], [-12, 10], [-24, 8]]);
-    drawFacet(p.bankFactor > 0 ? '#050505' : '#222', [[0, -28], [4, -5], [0, 10], [-4, -5]]);
+    ctx.beginPath();
+    ctx.moveTo(0, -28); ctx.lineTo(38, 12); ctx.lineTo(25, 12); ctx.lineTo(18, 18); ctx.lineTo(8, 12); ctx.lineTo(0, 16); ctx.lineTo(-8, 12); ctx.lineTo(-18, 18); ctx.lineTo(-25, 12); ctx.lineTo(-38, 12); 
+    ctx.closePath();
+    const hullGrad = ctx.createLinearGradient(-38, 0, 38, 0);
+    hullGrad.addColorStop(0, darkEdge); hullGrad.addColorStop(0.5, hullColor); hullGrad.addColorStop(1, darkEdge);
+    ctx.fillStyle = hullGrad;
+    ctx.fill();
 
     if (isArmed) {
-      ctx.shadowBlur = 25; ctx.shadowColor = '#ff9f43';
-      drawFacet('#222', [[-12, -18], [-24, -12], [-12, -6]]);
-      drawFacet('#222', [[12, -18], [24, -12], [12, -6]]);
-      const podY = 8 - (p.pitchFactor * 10);
-      ctx.fillStyle = '#0a0a0a';
-      ctx.fillRect((-30 * widthScale) + bankShift, podY, 10 * widthScale, 14);
-      ctx.fillRect((20 * widthScale) + bankShift, podY, 10 * widthScale, 14);
-      ctx.fillStyle = '#ff9f43';
-      ctx.fillRect((-28 * widthScale) + bankShift, podY + 3, 6 * widthScale, 8);
-      ctx.fillRect((22 * widthScale) + bankShift, podY + 3, 6 * widthScale, 8);
-      const bladePulse = Math.sin(time / 40) * 8;
-      drawFacet('#ff9f43', [[-24, 8], [-42 - bladePulse, 14], [-24, 16]]);
-      drawFacet('#ff9f43', [[24, 8], [42 + bladePulse, 14], [24, 16]]);
-      ctx.fillStyle = 'rgba(255, 159, 67, 0.4)';
-      drawFacet('rgba(255, 159, 67, 0.4)', [[-15, 10], [-30 - bladePulse/2, 22], [-15, 12]]);
-      drawFacet('rgba(255, 159, 67, 0.4)', [[15, 10], [30 + bladePulse/2, 22], [15, 12]]);
-      ctx.shadowBlur = 0;
+        ctx.save();
+        ctx.fillStyle = '#ff9f43'; ctx.shadowBlur = 10; ctx.shadowColor = '#ff9f43';
+        ctx.beginPath(); ctx.moveTo(22, 10); ctx.lineTo(34, 10); ctx.lineTo(28, 0); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(-22, 10); ctx.lineTo(-34, 10); ctx.lineTo(-28, 0); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = 'rgba(255, 159, 67, 0.8)'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(-35, 12); ctx.lineTo(-10, 0); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(35, 12); ctx.lineTo(10, 0); ctx.stroke();
+        ctx.restore();
     }
 
-    ctx.strokeStyle = isArmed ? `rgba(255, 159, 67, ${0.4 + pulse * 0.6})` : `rgba(0, 242, 255, ${0.4 + pulse * 0.6})`;
-    ctx.lineWidth = 2.5;
-    ctx.shadowBlur = 15; ctx.shadowColor = themeColor;
-    ctx.beginPath(); ctx.moveTo(-8 * widthScale + bankShift, -5); ctx.lineTo(-24 * widthScale + bankShift, 8); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(8 * widthScale + bankShift, -5); ctx.lineTo(24 * widthScale + bankShift, 8); ctx.stroke();
-    ctx.shadowBlur = 0;
+    const cockpitGrad = ctx.createLinearGradient(0, -18, 0, -10);
+    cockpitGrad.addColorStop(0, isArmed ? '#ff9f43' : '#000000'); cockpitGrad.addColorStop(1, '#1e272e');
+    ctx.fillStyle = cockpitGrad;
+    ctx.beginPath(); ctx.moveTo(-6, -16); ctx.quadraticCurveTo(0, -20, 6, -16); ctx.lineTo(8, -12); ctx.quadraticCurveTo(0, -14, -8, -12); ctx.closePath(); ctx.fill();
 
-    const cockpitY = -12 + (p.pitchFactor * 5);
-    const cockpitGlow = ctx.createRadialGradient(bankShift*0.3, cockpitY, 1, bankShift*0.3, cockpitY, 10);
-    cockpitGlow.addColorStop(0, '#fff'); cockpitGlow.addColorStop(0.4, themeColor); cockpitGlow.addColorStop(1, 'transparent');
-    ctx.fillStyle = cockpitGlow; ctx.beginPath(); ctx.ellipse(bankShift*0.3, cockpitY, 6 * widthScale, 12, 0, 0, Math.PI * 2); ctx.fill();
+    const strobe = Math.sin(p.pulseTimer * 15) > 0.5;
+    if (strobe) {
+        ctx.shadowBlur = 8;
+        ctx.fillStyle = isArmed ? '#ff9f43' : '#2ecc71'; ctx.shadowColor = ctx.fillStyle as string;
+        ctx.beginPath(); ctx.arc(32, 11, 2, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = isArmed ? '#ff4d4d' : '#e74c3c'; ctx.shadowColor = ctx.fillStyle as string;
+        ctx.beginPath(); ctx.arc(-32, 11, 2, 0, Math.PI*2); ctx.fill();
+        ctx.shadowBlur = 0;
+    }
 
+    if (p.respawnGrace > 0 || p.isShielded) {
+        ctx.restore(); ctx.save();
+        ctx.translate(p.x + 22, p.y + 22);
+        const sP = Math.sin(p.pulseTimer * 15) * 0.05 + 1;
+        const sColor = p.isShielded ? 'rgba(0, 242, 255, 0.5)' : 'rgba(255, 255, 255, 0.3)';
+        ctx.strokeStyle = sColor; ctx.lineWidth = 2; ctx.setLineDash([15, 8]);
+        ctx.beginPath(); 
+        for(let i=0; i<6; i++) {
+            const angle = (i * Math.PI * 2) / 6;
+            const rx = Math.cos(angle) * 62 * sP;
+            const ry = Math.sin(angle) * 62 * sP;
+            if (i === 0) ctx.moveTo(rx, ry); else ctx.lineTo(rx, ry);
+        }
+        ctx.closePath(); ctx.stroke();
+    }
+    ctx.restore();
+  };
+
+  const drawPowerUp = (ctx: CanvasRenderingContext2D, pw: PowerUp) => {
+    if (pw.picked) return;
+    ctx.save(); ctx.translate(pw.x, pw.y); ctx.rotate(pw.rotation);
+    const color = pw.type === 'shield' ? '#00f2ff' : '#ff9f43';
+    const pulse = Math.sin(performance.now() / 200) * 2 + 15;
+    const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, pulse + 12);
+    glow.addColorStop(0, color); glow.addColorStop(0.5, color + '44'); glow.addColorStop(1, 'transparent');
+    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(0, 0, pulse + 12, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'white'; ctx.shadowBlur = 15; ctx.shadowColor = color;
+    ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = color; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(0, 0, 20, 9, Math.PI/4, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(0, 0, 20, 9, -Math.PI/4, 0, Math.PI * 2); ctx.stroke();
     ctx.restore();
   };
 
   const drawEnemy = (ctx: CanvasRenderingContext2D, e: any) => {
-    ctx.save();
-    ctx.translate(e.x, e.y);
-    ctx.rotate(e.rotation);
-    const enemyPulse = Math.sin(Date.now() / 150) * 8;
-    const eg = ctx.createRadialGradient(0, 0, 0, 0, 0, 30 + enemyPulse);
-    eg.addColorStop(0, 'rgba(255, 0, 50, 0.4)');
-    eg.addColorStop(1, 'transparent');
-    ctx.fillStyle = eg;
-    ctx.beginPath(); ctx.arc(0, 0, 30 + enemyPulse, 0, Math.PI * 2); ctx.fill();
-    ctx.shadowBlur = 10; ctx.shadowColor = '#ff0033';
-    ctx.fillStyle = '#2d3436';
-    ctx.beginPath();
-    for (let i = 0; i < 6; i++) {
-        const angle = (i * Math.PI * 2) / 6;
-        const x = Math.cos(angle) * 16;
-        const y = Math.sin(angle) * 16;
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
-    ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#ff4d4d';
-    for (let i = 0; i < 4; i++) {
-        ctx.save(); ctx.rotate((i * Math.PI) / 2 + Math.PI / 4);
-        ctx.beginPath(); ctx.moveTo(14, -4); ctx.lineTo(24, 0); ctx.lineTo(14, 4); ctx.fill();
-        ctx.restore();
-    }
-    const eyePulse = Math.abs(Math.sin(Date.now() / 200)) * 4;
-    const eyeGlow = ctx.createRadialGradient(0, 0, 2, 0, 0, 10 + eyePulse);
-    eyeGlow.addColorStop(0, '#fff'); eyeGlow.addColorStop(0.3, '#ff0033'); eyeGlow.addColorStop(1, 'transparent');
-    ctx.fillStyle = eyeGlow; ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.save(); ctx.translate(e.x, e.y); ctx.rotate(e.angle + Math.PI/2);
+    const p = Math.sin(performance.now() / 150) * 2;
+    const isHunting = Math.hypot(playerRef.current.x + 22 - e.x, playerRef.current.y + 22 - e.y) < 180;
+    const glow = ctx.createRadialGradient(0, 0, 5, 0, 0, 25 + p);
+    glow.addColorStop(0, isHunting ? 'rgba(255, 0, 51, 0.4)' : 'rgba(255, 0, 51, 0.2)'); glow.addColorStop(1, 'transparent');
+    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(0, 0, 25 + p, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#1a1a1a'; ctx.beginPath(); ctx.moveTo(0, -20); ctx.lineTo(15, 15); ctx.lineTo(0, 8); ctx.lineTo(-15, 15); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#ff0033'; ctx.shadowBlur = isHunting ? 15 : 5; ctx.shadowColor = '#ff0033';
+    ctx.beginPath(); ctx.arc(0, -5, 4 + (isHunting ? 1 : 0), 0, Math.PI * 2); ctx.fill();
     ctx.restore();
   };
 
@@ -447,303 +393,85 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
     const canvas = canvasRef.current; const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx || !levelData?.maze) return;
     const {x:cx, y:cy} = cameraRef.current; const z = getDynamicZoom();
+    ctx.fillStyle = MAZE_STYLE.floor; ctx.fillRect(0,0,dimensions.width,dimensions.height);
+    ctx.save(); ctx.translate(dimensions.width/2, dimensions.height/2); ctx.scale(z,z); ctx.translate(-cx, -cy);
     
-    ctx.fillStyle = '#050515'; ctx.fillRect(0,0,dimensions.width,dimensions.height);
-    
-    ctx.save();
-    ctx.translate(dimensions.width/2, dimensions.height/2); ctx.scale(z,z);
-    if (screenShake>0) ctx.translate(Math.random()*screenShake-screenShake/2, Math.random()*screenShake-screenShake/2);
-    ctx.translate(-cx, -cy);
-
-    const time = Date.now();
-    const maze = levelData.maze;
-    const rows = maze.length;
-    const cols = maze[0].length;
-
-    for (let r=0; r < rows; r++) {
-      for (let c=0; c < cols; c++) {
-        const v = maze[r][c]; 
-        const x = c * TILE_SIZE;
-        const y = r * TILE_SIZE;
-
-        if (v === 1) { 
-          const isWallAbove = r > 0 && maze[r-1][c] === 1;
-          const isWallBelow = r < rows - 1 && maze[r+1][c] === 1;
-          const isWallLeft = c > 0 && maze[r][c-1] === 1;
-          const isWallRight = c < cols - 1 && maze[r][c+1] === 1;
-
-          ctx.fillStyle = 'rgba(0,0,0,0.4)';
-          ctx.fillRect(x + 10, y + 10, TILE_SIZE, TILE_SIZE);
-
-          ctx.fillStyle = MAZE_STYLE.wallBody;
-          ctx.fillRect(x, y + 8, TILE_SIZE, TILE_SIZE - 8);
-          
-          if (isWallRight) ctx.fillRect(x + TILE_SIZE - 2, y + 8, 4, TILE_SIZE - 8);
-          if (isWallBelow) ctx.fillRect(x, y + TILE_SIZE - 2, TILE_SIZE, 4);
-
-          const wallGrad = ctx.createLinearGradient(x, y, x, y + TILE_SIZE);
-          wallGrad.addColorStop(0, MAZE_STYLE.wallTop);
-          wallGrad.addColorStop(1, MAZE_STYLE.wallBody);
-          ctx.fillStyle = wallGrad;
-          ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
-
-          ctx.fillStyle = MAZE_STYLE.wallTop;
-          if (isWallRight) ctx.fillRect(x + TILE_SIZE - 2, y, 4, TILE_SIZE);
-          if (isWallBelow) ctx.fillRect(x, y + TILE_SIZE - 2, TILE_SIZE, 4);
-
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-          const starSeed = (r * 7 + c * 3) % 10;
-          for(let i=0; i<2; i++) {
-             const sx = x + 10 + ((starSeed * (i+1) * 17) % (TILE_SIZE - 20));
-             const sy = y + 10 + ((starSeed * (i+1) * 31) % (TILE_SIZE - 20));
-             const starPulse = Math.sin(time / 500 + i) * 0.5 + 0.5;
-             ctx.globalAlpha = starPulse;
-             ctx.beginPath(); ctx.arc(sx, sy, 0.8, 0, Math.PI * 2); ctx.fill();
-          }
-          ctx.globalAlpha = 1.0;
-
-          ctx.strokeStyle = MAZE_STYLE.wallBorder;
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          if (!isWallAbove) { ctx.moveTo(x, y); ctx.lineTo(x + TILE_SIZE, y); }
-          if (!isWallBelow) { ctx.moveTo(x, y + TILE_SIZE); ctx.lineTo(x + TILE_SIZE, y + TILE_SIZE); }
-          if (!isWallLeft) { ctx.moveTo(x, y); ctx.lineTo(x, y + TILE_SIZE); }
-          if (!isWallRight) { ctx.moveTo(x + TILE_SIZE, y); ctx.lineTo(x + TILE_SIZE, y + TILE_SIZE); }
-          ctx.stroke();
+    levelData.maze.forEach((row: number[], r: number) => {
+      row.forEach((v: number, c: number) => {
+        if (v === 1) {
+            const x = c * TILE_SIZE, y = r * TILE_SIZE;
+            ctx.fillStyle = '#050515'; ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+            const bg = ctx.createLinearGradient(x, y, x + TILE_SIZE, y + TILE_SIZE);
+            bg.addColorStop(0, '#0a0a25'); bg.addColorStop(1, '#02020a');
+            ctx.fillStyle = bg; ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+            ctx.strokeStyle = MAZE_STYLE.wallBorder; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.4;
+            ctx.beginPath();
+            if (r === 0 || levelData.maze[r-1][c] !== 1) { ctx.moveTo(x, y); ctx.lineTo(x + TILE_SIZE, y); }
+            if (r === levelData.maze.length - 1 || levelData.maze[r+1][c] !== 1) { ctx.moveTo(x, y + TILE_SIZE); ctx.lineTo(x + TILE_SIZE, y + TILE_SIZE); }
+            if (c === 0 || levelData.maze[r][c-1] !== 1) { ctx.moveTo(x, y); ctx.lineTo(x, y + TILE_SIZE); }
+            if (c === row.length - 1 || levelData.maze[r][c+1] !== 1) { ctx.moveTo(x + TILE_SIZE, y); ctx.lineTo(x + TILE_SIZE, y + TILE_SIZE); }
+            ctx.stroke(); ctx.globalAlpha = 1.0;
+        } else if (v === 2) {
+          const opt = levelData.options.find((o:any) => o.pos.x === c && o.pos.y === r);
+          if (opt) { ctx.fillStyle = 'white'; ctx.font = 'bold 12px Orbitron'; ctx.textAlign = 'center'; ctx.fillText(opt.text, c * TILE_SIZE + 32, r * TILE_SIZE + 38); }
         }
-        else if (v===2) { 
-          ctx.fillStyle = 'rgba(0,210,255,0.1)'; ctx.fillRect(x+4, y+4, TILE_SIZE-8, TILE_SIZE-8);
-          const o = levelData.options.find((opt:any) => opt.pos.x===c && opt.pos.y===r);
-          if (o) { 
-            ctx.fillStyle='white'; ctx.font='bold 12px Orbitron'; ctx.textAlign='center'; 
-            ctx.shadowBlur = 5; ctx.shadowColor = '#00d2ff';
-            ctx.fillText(o.text, x+32, y+38); 
-            ctx.shadowBlur = 0;
-          }
-        }
-      }
+      });
+    });
+
+    for (const pw of powerUpsRef.current) drawPowerUp(ctx, pw);
+    for (const pj of projectilesRef.current) { 
+        ctx.save(); ctx.fillStyle = '#ff9f43'; ctx.shadowBlur = 10; ctx.shadowColor = '#ff9f43';
+        ctx.beginPath(); ctx.arc(pj.x, pj.y, 5, 0, Math.PI*2); ctx.fill(); 
+        ctx.fillStyle = 'rgba(255, 159, 67, 0.4)'; ctx.beginPath(); ctx.arc(pj.x, pj.y, 8, 0, Math.PI*2); ctx.fill();
+        ctx.restore();
     }
-
-    for (const pw of powerUpsRef.current) if (!pw.picked) drawPowerUp(ctx, pw);
-
-    const p = playerRef.current;
+    const p = playerRef.current; 
     if (!p.isDead || Math.sin(Date.now()/50)>0) drawPlayer(ctx, p);
     for (const e of enemiesRef.current) if (!e.isDestroyed) drawEnemy(ctx, e);
-
-    for (const pj of projectilesRef.current) { 
-      ctx.fillStyle='#ff9f43'; 
-      ctx.shadowBlur = 15; ctx.shadowColor = '#ff9f43';
-      ctx.beginPath(); ctx.arc(pj.x, pj.y, 6, 0, Math.PI*2); ctx.fill(); 
-      ctx.shadowBlur = 0;
-    }
-    
     ctx.restore();
   };
 
   useEffect(() => {
     const kd = (e:KeyboardEvent) => {
       if (isTransitioning) return;
-      if (['ArrowUp','w'].includes(e.key)) { currentMoveVec.current.y = -1; currentMoveVec.current.x = 0; }
-      else if (['ArrowDown','s'].includes(e.key)) { currentMoveVec.current.y = 1; currentMoveVec.current.x = 0; }
-      else if (['ArrowLeft','a'].includes(e.key)) { currentMoveVec.current.x = -1; currentMoveVec.current.y = 0; }
-      else if (['ArrowRight','d'].includes(e.key)) { currentMoveVec.current.x = 1; currentMoveVec.current.y = 0; }
+      if (['ArrowUp','w'].includes(e.key)) nextMoveVec.current = { x: 0, y: -1 };
+      else if (['ArrowDown','s'].includes(e.key)) nextMoveVec.current = { x: 0, y: 1 };
+      else if (['ArrowLeft','a'].includes(e.key)) nextMoveVec.current = { x: -1, y: 0 };
+      else if (['ArrowRight','d'].includes(e.key)) nextMoveVec.current = { x: 1, y: 0 };
       if (e.code==='Space') fireProjectile();
     };
-    
-    window.addEventListener('keydown', kd);
-    rafRef.current = requestAnimationFrame(update);
-    return () => { 
-      window.removeEventListener('keydown', kd); 
-      cancelAnimationFrame(rafRef.current); 
-    };
+    window.addEventListener('keydown', kd); rafRef.current = requestAnimationFrame(update);
+    return () => { window.removeEventListener('keydown', kd); cancelAnimationFrame(rafRef.current); };
   }, [update, isTransitioning]);
 
   return (
     <div ref={containerRef} className="absolute inset-0 w-full h-full flex items-center justify-center bg-[#050510]">
       <canvas ref={canvasRef} width={dimensions.width} height={dimensions.height} className="block" />
       
-      <style>{`
-        .mobile-ui-container {
-          position: fixed !important;
-          bottom: 10px !important; /* LOWERED TO THE MAX */
-          bottom: env(safe-area-inset-bottom, 10px) !important; /* Safe Area support */
-          left: 0 !important;
-          right: 0 !important;
-          z-index: 99999 !important;
-          pointer-events: none !important;
-          display: none !important;
-          touch-action: none !important;
-          -webkit-user-select: none !important;
-          user-select: none !important;
-          padding: 0 1rem !important;
-          justify-content: space-between !important;
-          align-items: flex-end !important;
-        }
-
-        @media (max-width: 1024px) {
-          .mobile-ui-container {
-            display: flex !important;
-          }
-        }
-
-        .dpad-panel {
-          pointer-events: auto !important;
-          display: grid !important;
-          grid-template-areas: 
-            ". up ."
-            "right center left" 
-            ". down .";
-          grid-template-columns: repeat(3, 3.2rem) !important;
-          grid-template-rows: repeat(3, 3.2rem) !important;
-          gap: 4px !important;
-          opacity: 0.4 !important;
-          transition: opacity 0.2s, transform 0.1s;
-          touch-action: none !important;
-        }
-
-        .dpad-panel:active { opacity: 0.9 !important; }
-
-        .dpad-btn {
-          background: rgba(0, 210, 255, 0.15) !important;
-          display: flex !important;
-          align-items: center !important;
-          justify-content: center !important;
-          transition: all 0.15s !important;
-          -webkit-tap-highlight-color: transparent !important;
-          touch-action: none !important;
-          border: 1.5px solid rgba(0, 210, 255, 0.5) !important;
-          border-radius: 0.8rem !important;
-          box-shadow: 0 0 10px rgba(0, 210, 255, 0.2);
-          position: relative;
-        }
-
-        .dpad-btn:active {
-          background: rgba(0, 210, 255, 0.4) !important;
-          transform: scale(0.9);
-          box-shadow: 0 0 20px rgba(0, 210, 255, 0.6);
-          border-color: #00f2ff !important;
-        }
-
-        .btn-up { grid-area: up; }
-        .btn-down { grid-area: down; }
-        .btn-left { grid-area: left; }
-        .btn-right { grid-area: right; }
-        
-        .arrow-svg { 
-          width: 1.8rem; 
-          height: 1.8rem; 
-          fill: #00f2ff; 
-          filter: drop-shadow(0 0 8px #00f2ff);
-        }
-        
-        .rotate-up { transform: rotate(0deg); }
-        .rotate-down { transform: rotate(180deg); }
-        .rotate-left { transform: rotate(-90deg); }
-        .rotate-right { transform: rotate(90deg); }
-
-        .dpad-center { 
-          grid-area: center; 
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-        
-        .center-dot {
-          width: 0.5rem;
-          height: 0.5rem;
-          background: rgba(0, 210, 255, 0.3);
-          border-radius: 50%;
-        }
-
-        .shoot-btn-wrapper {
-          pointer-events: auto !important;
-          opacity: 0.4 !important;
-          transition: opacity 0.2s, transform 0.1s;
-          touch-action: none !important;
-          padding-bottom: 5px; /* Alignment fix for the circular button */
-        }
-        .shoot-btn-wrapper:active { opacity: 0.9 !important; }
-
-        .shoot-btn-circle {
-          width: 4.8rem;
-          height: 4.8rem;
-          background: rgba(255, 159, 67, 0.05) !important; 
-          border: 3.5px solid #ff9f43 !important; 
-          border-radius: 50% !important;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: all 0.15s;
-          box-shadow: 0 0 20px rgba(255, 159, 67, 0.3);
-          touch-action: none !important;
-        }
-
-        .shoot-btn-circle:active {
-          transform: scale(0.85);
-          background: rgba(255, 159, 67, 0.3) !important;
-          box-shadow: 0 0 35px rgba(255, 159, 67, 0.7);
-        }
-
-        .bomb-text {
-          font-family: 'Orbitron', sans-serif;
-          font-weight: 900;
-          font-size: 0.8rem;
-          color: #ff9f43;
-          letter-spacing: 1.5px;
-          text-shadow: 0 0 10px #ff9f43;
-        }
-      `}</style>
-      
-      <div className="mobile-ui-container">
-        
-        {/* BOMB (LEFT) */}
-        <div className="shoot-btn-wrapper">
-          <button 
-            onTouchStart={(e) => { e.preventDefault(); fireProjectile(); }}
-            className="shoot-btn-circle"
-          >
-            <span className="bomb-text">BOMB</span>
-          </button>
-        </div>
-
-        {/* DPAD (RIGHT) - INVERTED INTERNAL BUTTONS */}
-        <div className="dpad-panel">
-          <button 
-            onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current = { x: 0, y: -1 }; }} 
-            className="dpad-btn btn-up"
-          >
-            <svg className="arrow-svg rotate-up" viewBox="0 0 24 24"><path d="M12 4l-9 15h18l-9-15z"/></svg>
-          </button>
-          
-          <button 
-            onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current = { x: 0, y: 1 }; }} 
-            className="dpad-btn btn-down"
-          >
-            <svg className="arrow-svg rotate-down" viewBox="0 0 24 24"><path d="M12 4l-9 15h18l-9-15z"/></svg>
-          </button>
-          
-          {/* Visual Right Button -> Logical Move Left */}
-          <button 
-            onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current = { x: -1, y: 0 }; }} 
-            className="dpad-btn btn-left"
-          >
-            <svg className="arrow-svg rotate-left" viewBox="0 0 24 24"><path d="M12 4l-9 15h18l-9-15z"/></svg>
-          </button>
-          
-          {/* Visual Left Button -> Logical Move Right */}
-          <button 
-            onTouchStart={(e) => { e.preventDefault(); currentMoveVec.current = { x: 1, y: 0 }; }} 
-            className="dpad-btn btn-right"
-          >
-            <svg className="arrow-svg rotate-right" viewBox="0 0 24 24"><path d="M12 4l-9 15h18l-9-15z"/></svg>
-          </button>
-          
-          <div className="dpad-center">
-            <div className="center-dot" />
+      {/* HUD OVERLAYS - Virtual Controls */}
+      {!isTransitioning && (
+        <>
+          {/* Joystick Area */}
+          <div className="absolute bottom-12 left-12 z-[200]">
+            <VirtualJoystick 
+              onMove={handleJoystickMove} 
+              onEnd={() => { nextMoveVec.current = { x: 0, y: 0 }; }} 
+            />
           </div>
-        </div>
 
-      </div>
+          {/* Fire Button Area */}
+          <div className="absolute bottom-12 right-12 z-[200]">
+            <button 
+              onPointerDown={(e) => { e.preventDefault(); fireProjectile(); }}
+              className="w-[100px] h-[100px] rounded-full border-4 border-orange-500/50 bg-orange-500/10 backdrop-blur-md shadow-[0_0_30px_rgba(255,159,67,0.4)] active:scale-90 active:bg-orange-500/30 transition-all flex items-center justify-center group touch-none select-none"
+            >
+              <div className="w-[60px] h-[60px] rounded-full bg-gradient-to-br from-orange-400 to-red-600 shadow-inner flex items-center justify-center">
+                <span className="text-white font-black orbitron text-xs tracking-tighter opacity-80 group-active:scale-110 transition-transform">FIRE</span>
+              </div>
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 };

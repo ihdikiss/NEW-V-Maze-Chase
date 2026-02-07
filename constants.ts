@@ -1,29 +1,19 @@
 
 export const TILE_SIZE = 64;
-// Values are now in pixels per second (Units/Sec)
-// Calibrated for fair but challenging pursuit
-export const PLAYER_SPEED = 180; 
-export const ENEMY_SPEED_BASE = 160; 
+export const PLAYER_SPEED = 240; 
+export const ENEMY_SPEED_BASE = 150; 
 export const COLLISION_PADDING = 16;
-export const PROJECTILE_SPEED = 600; // Pixels per second
+export const PROJECTILE_SPEED = 700; 
 
 export const MAZE_STYLE = {
-  wallBody: '#020010', // Deep Space Black
-  wallTop: '#1a0033',  // Nebula Purple
-  wallBorder: '#6c5ce7', // Galactic Violet
-  wallHighlight: '#a29bfe', // Star Light
-  wallCircuit: '#00d2ff', // Energy Stream
-  wallShadow: 'rgba(0, 0, 0, 0.8)',
-  floor: '#050515',
-  floorGrid: 'rgba(108, 92, 231, 0.05)', // Cosmic Grid
-  zoneFrame: '#4a90e2',
-  zoneGlow: 'rgba(74, 144, 226, 0.4)',
-  playerBody: '#ffffff',
-  playerVisor: '#00d2ff',
-  enemyBody: '#2d3436',
-  enemyEye: '#ff4d4d',
-  projectile: '#00f2ff',
-  weaponPowerUp: '#ff9f43'
+  wallBody: '#050515', // معدن داكن جداً
+  wallTop: '#1a1a3a',  // سطح علوي مصقول
+  wallBorder: '#00d2ff', // أزرق سيبراني متوهج
+  circuitLine: '#00f2ff55', // خطوط دوائر نابضة
+  floor: '#02020a',
+  floorGrid: '#6c5ce711', 
+  zoneActive: '#00f2ff',
+  zoneIdle: '#4a90e222'
 };
 
 const STANDARD_MAZE = [
@@ -55,7 +45,6 @@ const OPEN_MAZE = [
 ];
 
 export const LEVELS = [
-  // المستوى 1
   {
     id: 1,
     question: "ما هي عاصمة المغرب؟",
@@ -68,7 +57,6 @@ export const LEVELS = [
     startPos: { x: 7, y: 5 },
     enemies: [{ x: 3, y: 3 }, { x: 11, y: 3 }]
   },
-  // المستوى 2
   {
     id: 2,
     question: "كم عدد أيام الأسبوع؟",
@@ -81,7 +69,6 @@ export const LEVELS = [
     startPos: { x: 7, y: 5 },
     enemies: [{ x: 1, y: 9 }, { x: 13, y: 9 }, { x: 7, y: 1 }]
   },
-  // المستوى 3
   {
     id: 3,
     question: "أي كوكب يُعرف بالكوكب الأحمر؟",
@@ -94,7 +81,6 @@ export const LEVELS = [
     startPos: { x: 7, y: 5 },
     enemies: [{ x: 2, y: 3 }, { x: 12, y: 3 }, { x: 7, y: 3 }]
   },
-  // المستوى 4
   {
     id: 4,
     question: "ما هي أكبر قارة في العالم؟",
@@ -107,7 +93,6 @@ export const LEVELS = [
     startPos: { x: 7, y: 5 },
     enemies: [{ x: 5, y: 5 }, { x: 9, y: 5 }]
   },
-  // المستوى 5
   {
     id: 5,
     question: "كم عدد الحواس الأساسية عند الإنسان؟",
@@ -119,57 +104,5 @@ export const LEVELS = [
     maze: STANDARD_MAZE,
     startPos: { x: 7, y: 5 },
     enemies: [{ x: 1, y: 1 }, { x: 13, y: 1 }, { x: 1, y: 9 }]
-  },
-  // المستوى 6
-  {
-    id: 6,
-    question: "ما هو العنصر الكيميائي الذي رمزه (O)؟",
-    options: [
-      { text: "الذهب", isCorrect: false, pos: { x: 1, y: 1 } },
-      { text: "الأكسجين", isCorrect: true, pos: { x: 13, y: 1 } },
-      { text: "الحديد", isCorrect: false, pos: { x: 7, y: 7 } }
-    ],
-    maze: OPEN_MAZE,
-    startPos: { x: 7, y: 5 },
-    enemies: [{ x: 4, y: 1 }, { x: 10, y: 1 }, { x: 7, y: 9 }]
-  },
-  // المستوى 7
-  {
-    id: 7,
-    question: "في أي قارة تقع دولة اليابان؟",
-    options: [
-      { text: "أوروبا", isCorrect: false, pos: { x: 1, y: 1 } },
-      { text: "آسيا", isCorrect: true, pos: { x: 13, y: 1 } },
-      { text: "أستراليا", isCorrect: false, pos: { x: 7, y: 9 } }
-    ],
-    maze: STANDARD_MAZE,
-    startPos: { x: 7, y: 5 },
-    enemies: [{ x: 3, y: 7 }, { x: 11, y: 7 }]
-  },
-  // المستوى 8
-  {
-    id: 8,
-    question: "من هو مخترع الهاتف؟",
-    options: [
-      { text: "توماس إديسون", isCorrect: false, pos: { x: 1, y: 1 } },
-      { text: "غراهام بيل", isCorrect: true, pos: { x: 13, y: 1 } },
-      { text: "نيوتن", isCorrect: false, pos: { x: 7, y: 7 } }
-    ],
-    maze: OPEN_MAZE,
-    startPos: { x: 7, y: 5 },
-    enemies: [{ x: 2, y: 2 }, { x: 12, y: 2 }, { x: 7, y: 8 }]
-  },
-  // المستوى 9
-  {
-    id: 9,
-    question: "كم عدد الكواكب في المجموعة الشمسية؟",
-    options: [
-      { text: "سبعة", isCorrect: false, pos: { x: 1, y: 1 } },
-      { text: "ثمانية", isCorrect: true, pos: { x: 13, y: 1 } },
-      { text: "تسعة", isCorrect: false, pos: { x: 7, y: 9 } }
-    ],
-    maze: STANDARD_MAZE,
-    startPos: { x: 7, y: 5 },
-    enemies: [{ x: 1, y: 5 }, { x: 13, y: 5 }, { x: 7, y: 1 }, { x: 7, y: 9 }]
   }
 ];
