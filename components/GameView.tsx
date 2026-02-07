@@ -254,15 +254,34 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
           p.isDead = true; setScreenShake(10); onEnemyHit(); setTimeout(() => { initLevel(); setScreenShake(0); }, 1200);
       }
       if (!isEnemyFrozenRef.current) {
-        e.pathUpdateTimer -= dt;
-        if (e.pathUpdateTimer <= 0) {
-          e.targetTile = findNextStep({x: Math.floor(e.x/TILE_SIZE), y: Math.floor(e.y/TILE_SIZE)}, {x: pTX, y: pTY});
-          e.pathUpdateTimer = 0.25;
-        }
         const dx = (e.targetTile.x * TILE_SIZE + 32) - e.x, dy = (e.targetTile.y * TILE_SIZE + 32) - e.y;
         const dist = Math.hypot(dx, dy);
+
+        // إذا وصل العدو إلى الهدف أو انتهى المؤقت، اختر اتجاهاً عشوائياً جديداً
+        e.pathUpdateTimer -= dt;
+        if (dist < 5 || e.pathUpdateTimer <= 0) {
+          const curTX = Math.floor(e.x / TILE_SIZE);
+          const curTY = Math.floor(e.y / TILE_SIZE);
+          const possibleDirs = [
+            {x: 0, y: -1}, {x: 0, y: 1}, {x: -1, y: 0}, {x: 1, y: 0}
+          ].filter(dir => {
+            const nx = curTX + dir.x;
+            const ny = curTY + dir.y;
+            return ny >= 0 && ny < levelData.maze.length && 
+                   nx >= 0 && nx < levelData.maze[0].length && 
+                   levelData.maze[ny][nx] !== 1;
+          });
+
+          if (possibleDirs.length > 0) {
+            const chosen = possibleDirs[Math.floor(Math.random() * possibleDirs.length)];
+            e.targetTile = { x: curTX + chosen.x, y: curTY + chosen.y };
+          }
+          // تعيين مؤقت عشوائي لتغيير الاتجاه حتى لو لم يصل، لزيادة العشوائية
+          e.pathUpdateTimer = 0.5 + Math.random() * 1.5;
+        }
+
         if (dist > 2) {
-          const ms = ENEMY_SPEED_BASE * (Math.hypot(p.x+22-e.x, p.y+22-e.y) < 120 ? 1.1 : 1.0);
+          const ms = ENEMY_SPEED_BASE;
           e.x += (dx/dist)*ms*dt; e.y += (dy/dist)*ms*dt;
           e.angle = lerpAngle(e.angle, Math.atan2(dy, dx), 8 * dt);
         }
@@ -379,13 +398,13 @@ const GameView: React.FC<GameViewProps> = ({ levelData, onCorrect, onIncorrect, 
   const drawEnemy = (ctx: CanvasRenderingContext2D, e: any) => {
     ctx.save(); ctx.translate(e.x, e.y); ctx.rotate(e.angle + Math.PI/2);
     const p = Math.sin(performance.now() / 150) * 2;
-    const isHunting = Math.hypot(playerRef.current.x + 22 - e.x, playerRef.current.y + 22 - e.y) < 180;
+    const isHunting = false; // لم يعد هناك مطاردة
     const glow = ctx.createRadialGradient(0, 0, 5, 0, 0, 25 + p);
     glow.addColorStop(0, isHunting ? 'rgba(255, 0, 51, 0.4)' : 'rgba(255, 0, 51, 0.2)'); glow.addColorStop(1, 'transparent');
     ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(0, 0, 25 + p, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#1a1a1a'; ctx.beginPath(); ctx.moveTo(0, -20); ctx.lineTo(15, 15); ctx.lineTo(0, 8); ctx.lineTo(-15, 15); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#ff0033'; ctx.shadowBlur = isHunting ? 15 : 5; ctx.shadowColor = '#ff0033';
-    ctx.beginPath(); ctx.arc(0, -5, 4 + (isHunting ? 1 : 0), 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ff0033'; ctx.shadowBlur = 5; ctx.shadowColor = '#ff0033';
+    ctx.beginPath(); ctx.arc(0, -5, 4, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
   };
 
