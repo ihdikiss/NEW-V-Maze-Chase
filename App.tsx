@@ -424,7 +424,9 @@ const App: React.FC = () => {
                   }
                 }, 2000);
               }}
-              onIncorrect={() => { setLastFeedback({ type: 'fail', message: 'WRONG SECTOR' }); setTimeout(() => setLastFeedback(null), 1500); }}
+              onIncorrect={() => { 
+                /* لا نفعل شيئاً هنا لإتاحة الاستمرار بشكل عادي دون علامة خطأ */ 
+              }}
               onEnemyHit={() => {
                 setLives(l => {
                   const n = l - 1;

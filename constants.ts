@@ -1,7 +1,7 @@
 
 export const TILE_SIZE = 64;
 export const PLAYER_SPEED = 240; 
-export const ENEMY_SPEED_BASE = 150; 
+export const ENEMY_SPEED_BASE = 120; 
 export const COLLISION_PADDING = 16;
 export const PROJECTILE_SPEED = 700; 
 
